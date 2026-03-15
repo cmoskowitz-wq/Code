@@ -1,0 +1,107 @@
+# ============================================================
+#  JobHelp Version 1 — Configuration File
+#  Edit this file to customize boards, titles, and schedule.
+# ============================================================
+
+version: "JobHelp Version 1"
+
+# ── Job titles to search for ────────────────────────────────
+# Add or remove titles as needed.
+job_titles:
+  - "CTO"
+  - "CIO"
+  - "VP of Technology"
+  - "Head of IT"
+  - "Head of Infrastructure"
+  - "SVP of Technology"
+  - "EUC"
+  - "Director of Technology"
+
+# ── Job boards ───────────────────────────────────────────────
+# Set enabled: false to skip a board without deleting it.
+job_boards:
+
+  indeed:
+    enabled: true
+    # Uses Indeed's public RSS feed — no key required.
+    base_url: "https://www.indeed.com"
+
+  linkedin:
+    enabled: true
+    # Uses LinkedIn's public guest jobs API — no key required.
+    base_url: "https://www.linkedin.com"
+
+  ziprecruiter:
+    enabled: true
+    base_url: "https://www.ziprecruiter.com"
+
+  glassdoor:
+    enabled: true
+    base_url: "https://www.glassdoor.com"
+
+  dice:
+    enabled: true
+    # Uses Dice's internal search API — no key required.
+    base_url: "https://job-search-api.svc.dhigroupinc.com"
+
+  simplyhired:
+    enabled: true
+    base_url: "https://www.simplyhired.com"
+
+  monster:
+    enabled: true
+    base_url: "https://www.monster.com"
+
+  themuse:
+    enabled: true
+    # The Muse has a completely free public API — no key required.
+    base_url: "https://www.themuse.com/api/public"
+
+  adzuna:
+    enabled: false   # Set to true after obtaining free API keys below.
+    # Register for free at: https://developer.adzuna.com/
+    app_id: ""
+    app_key: ""
+    country: "us"   # us, gb, ca, au, etc.
+
+  careerbuilder:
+    enabled: true
+    base_url: "https://www.careerbuilder.com"
+
+  remoteok:
+    enabled: true
+    # Remote OK has a public JSON API — no key required.
+    base_url: "https://remoteok.com/api"
+
+  jobicy:
+    enabled: true
+    # Jobicy has a free public API — no key required.
+    base_url: "https://jobicy.com/api/v2"
+
+# ── Search filters ────────────────────────────────────────────
+search:
+  hours_ago: 24          # Only return jobs posted within this many hours
+  location: ""           # Leave blank to search nationally; e.g. "New York, NY"
+  remote_ok: true        # Include remote positions
+  results_per_board: 25  # Max results per board per title (where supported)
+
+# ── Email settings ────────────────────────────────────────────
+email:
+  recipient: "cmoskowitz@gmail.com"
+  sender: ""             # Your sending address, e.g. you@gmail.com
+  sender_name: "JobHelp Bot"
+
+  # SMTP settings — defaults work for Gmail.
+  # For Gmail you MUST use an App Password (not your regular password).
+  # Create one at: https://myaccount.google.com/apppasswords
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  use_tls: true
+  password: ""           # Gmail App Password or SMTP password
+
+  # ── Schedule ──────────────────────────────────────────────
+  # How often to send the digest email.
+  # Options: "daily", "hourly", or a cron expression like "0 8 * * *"
+  schedule: "daily"
+  daily_time: "08:00"    # 24-hour time (HH:MM) used when schedule = "daily"
+  timezone: "America/New_York"
