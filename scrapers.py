@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-import feedparser
+import xml.etree.ElementTree as ET
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -139,31 +140,52 @@ class IndeedScraper(BaseScraper):
             params["l"] = self.location
 
         url = "https://www.indeed.com/rss?" + urllib.parse.urlencode(params)
-        feed = feedparser.parse(url)
+        resp = _get(url)
+        if not resp:
+            return []
+
         jobs: List[Job] = []
+        try:
+            root = ET.fromstring(resp.content)
+        except ET.ParseError:
+            return []
 
-        for entry in feed.entries[: self.max_results]:
+        ns = {"content": "http://purl.org/rss/1.0/modules/content/"}
+        items = root.findall(".//item")
+
+        for item in items[: self.max_results]:
+            def _text(tag: str) -> str:
+                el = item.find(tag)
+                return el.text.strip() if el is not None and el.text else ""
+
             posted = None
-            if hasattr(entry, "published_parsed") and entry.published_parsed:
-                posted = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+            pub_date = _text("pubDate")
+            if pub_date:
+                try:
+                    from email.utils import parsedate_to_datetime
+                    posted = parsedate_to_datetime(pub_date).astimezone(timezone.utc)
+                except Exception:
+                    pass
 
-            # Extract company from title (format: "Job Title - Company Name")
-            raw_title = entry.get("title", "")
-            parts = raw_title.split(" - ")
-            title = parts[0].strip() if parts else raw_title
-            company = parts[1].strip() if len(parts) > 1 else "Unknown"
-            location = parts[2].strip() if len(parts) > 2 else self.location or "US"
+            # Indeed title format: "Job Title - Company Name - Location"
+            raw_title = _text("title")
+            parts = [p.strip() for p in raw_title.split(" - ")]
+            title = parts[0] if parts else raw_title
+            company = parts[1] if len(parts) > 1 else "Unknown"
+            location = parts[2] if len(parts) > 2 else self.location or "US"
+
+            description = BeautifulSoup(
+                _text("description"), "html.parser"
+            ).get_text()[:300]
 
             job = Job(
                 title=title,
                 company=company,
                 location=location,
-                url=entry.get("link", ""),
+                url=_text("link"),
                 source=self.name,
                 posted=posted,
-                description=BeautifulSoup(
-                    entry.get("summary", ""), "html.parser"
-                ).get_text()[:300],
+                description=description,
             )
             if job.is_recent(self.hours_ago):
                 jobs.append(job)
