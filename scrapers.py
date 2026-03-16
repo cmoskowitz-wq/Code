@@ -248,7 +248,7 @@ class BaseScraper:
                 for j in jobs:
                     j.search_term = title
                 results.extend(jobs)
-                time.sleep(random.uniform(3, 6))  # human-like delay between searches
+                time.sleep(random.uniform(5, 10))  # human-like delay between searches
             except Exception as exc:
                 logger.error("[%s] Error searching '%s': %s", self.name, title, exc)
         return results

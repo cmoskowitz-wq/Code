@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -86,11 +87,16 @@ def run_job(cfg: dict, dry_run: bool = False) -> List[Job]:  # noqa: F821
     )
 
     all_jobs: list[Job] = []
-    for scraper in scrapers:
+    for i, scraper in enumerate(scrapers):
         logger.info("  Scraping %s ...", scraper.name)
         jobs = scraper.search_all(job_titles)
         logger.info("    → %d results", len(jobs))
         all_jobs.extend(jobs)
+        # Pause between boards to avoid triggering rate limits
+        if i < len(scrapers) - 1:
+            wait = random.uniform(5, 10)
+            logger.info("  Waiting %.0fs before next board…", wait)
+            time.sleep(wait)
 
     all_jobs = deduplicate(all_jobs)
     logger.info("Total unique jobs after deduplication: %d", len(all_jobs))
