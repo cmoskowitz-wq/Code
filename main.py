@@ -86,13 +86,21 @@ def run_job(cfg: dict, dry_run: bool = False) -> List[Job]:  # noqa: F821
     )
 
     all_jobs: list[Job] = []
+    board_summary: list[str] = []
     for scraper in scrapers:
         logger.info("  Scraping %s ...", scraper.name)
         jobs = scraper.search_all(job_titles)
-        logger.info("    → %d results", len(jobs))
+        dated = sum(1 for j in jobs if j.posted is not None)
+        undated = len(jobs) - dated
+        logger.info(
+            "    → %d results (%d with date, %d undated — included by default)",
+            len(jobs), dated, undated,
+        )
+        board_summary.append(f"{scraper.name}: {len(jobs)}")
         all_jobs.extend(jobs)
 
     all_jobs = deduplicate(all_jobs)
+    logger.info("Board summary: %s", " | ".join(board_summary))
     logger.info("Total unique jobs after deduplication: %d", len(all_jobs))
 
     if dry_run:

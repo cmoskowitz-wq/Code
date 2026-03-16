@@ -117,10 +117,25 @@ class BaseScraper:
                 jobs = self.fetch(title)
                 for j in jobs:
                     j.search_term = title
+                # Universal recency filter — keeps jobs posted within hours_ago
+                # or jobs with no posting date (unknown age = include them)
+                before = len(jobs)
+                jobs = [j for j in jobs if j.is_recent(self.hours_ago)]
+                filtered_out = before - len(jobs)
+                if filtered_out:
+                    logger.info(
+                        "  [%s] '%s': %d results, %d filtered as older than %dh",
+                        self.name, title, before, filtered_out, self.hours_ago,
+                    )
                 results.extend(jobs)
                 time.sleep(1.2)  # polite rate limiting
             except Exception as exc:
                 logger.error("[%s] Error searching '%s': %s", self.name, title, exc)
+        if not results:
+            logger.warning(
+                "[%s] returned 0 results across all titles — board may be "
+                "blocking requests or no matching jobs found.", self.name,
+            )
         return results
 
 
@@ -187,8 +202,7 @@ class IndeedScraper(BaseScraper):
                 posted=posted,
                 description=description,
             )
-            if job.is_recent(self.hours_ago):
-                jobs.append(job)
+            jobs.append(job)
 
         return jobs
 
@@ -244,8 +258,7 @@ class LinkedInScraper(BaseScraper):
                 source=self.name,
                 posted=posted,
             )
-            if job.is_recent(self.hours_ago):
-                jobs.append(job)
+            jobs.append(job)
 
         return jobs
 
@@ -399,8 +412,7 @@ class DiceScraper(BaseScraper):
                 remote=item.get("workplaceTypes", []) and
                        "Remote" in item.get("workplaceTypes", []),
             )
-            if job.is_recent(self.hours_ago):
-                jobs.append(job)
+            jobs.append(job)
 
         return jobs
 
@@ -644,8 +656,7 @@ class AdzunaScraper(BaseScraper):
                 posted=posted,
                 description=item.get("description", "")[:300],
             )
-            if job.is_recent(self.hours_ago):
-                jobs.append(job)
+            jobs.append(job)
 
         return jobs
 
