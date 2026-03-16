@@ -80,25 +80,36 @@ def _get_session(domain: str) -> requests.Session:
 
 def _get(url: str, params: dict | None = None, headers: dict | None = None,
          json_response: bool = False):
-    """Safe GET wrapper with retry, browser-like headers, and session cookies."""
+    """Safe GET wrapper with retry, exponential backoff on 429s, and session cookies."""
     parsed = urlparse(url)
     domain = parsed.netloc
     session = _get_session(domain)
     h = _build_browser_headers(url, extra=headers)
 
-    for attempt in range(2):
+    max_attempts = 4
+    for attempt in range(max_attempts):
         try:
-            # Randomised delay to avoid machine-gun request patterns
-            if attempt > 0:
-                time.sleep(random.uniform(2, 4))
-
             resp = session.get(url, params=params, headers=h,
                                timeout=REQUEST_TIMEOUT)
+            # Handle 429 with exponential backoff
+            if resp.status_code == 429:
+                if attempt < max_attempts - 1:
+                    wait = (2 ** attempt) * random.uniform(2, 4)
+                    logger.info("Rate-limited by %s, waiting %.0fs before retry…",
+                                domain, wait)
+                    time.sleep(wait)
+                    continue
+                else:
+                    logger.warning("Rate-limited by %s after %d retries, skipping.",
+                                   domain, max_attempts)
+                    return None
+
             resp.raise_for_status()
             return resp.json() if json_response else resp
         except requests.RequestException as exc:
-            if attempt == 0:
-                time.sleep(random.uniform(1.5, 3))
+            if attempt < max_attempts - 1:
+                wait = (2 ** attempt) * random.uniform(1, 2)
+                time.sleep(wait)
             else:
                 logger.warning("Request failed for %s: %s", url, exc)
     return None
@@ -166,7 +177,7 @@ class BaseScraper:
                 for j in jobs:
                     j.search_term = title
                 results.extend(jobs)
-                time.sleep(random.uniform(1.5, 3.5))  # human-like delay
+                time.sleep(random.uniform(3, 6))  # human-like delay between searches
             except Exception as exc:
                 logger.error("[%s] Error searching '%s': %s", self.name, title, exc)
         return results
