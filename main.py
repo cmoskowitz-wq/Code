@@ -25,7 +25,7 @@ import yaml
 from dotenv import load_dotenv
 
 from email_sender import build_html_report, send_report
-from scrapers import Job, build_scrapers, deduplicate
+from scrapers import Job, build_scrapers, deduplicate, shutdown_browser
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -233,15 +233,18 @@ def main() -> None:
 
     logger.info("Loaded config: %s", cfg.get("version", "JobHelp Version 1"))
 
-    if args.now:
-        run_job(cfg, dry_run=args.dry_run)
-    elif args.dry_run:
-        run_job(cfg, dry_run=True)
-    else:
-        try:
-            start_scheduler(cfg)
-        except KeyboardInterrupt:
-            logger.info("JobHelp stopped by user.")
+    try:
+        if args.now:
+            run_job(cfg, dry_run=args.dry_run)
+        elif args.dry_run:
+            run_job(cfg, dry_run=True)
+        else:
+            try:
+                start_scheduler(cfg)
+            except KeyboardInterrupt:
+                logger.info("JobHelp stopped by user.")
+    finally:
+        shutdown_browser()
 
 
 if __name__ == "__main__":

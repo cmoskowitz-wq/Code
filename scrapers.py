@@ -23,6 +23,12 @@ import xml.etree.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    _HAS_PLAYWRIGHT = True
+except ImportError:
+    _HAS_PLAYWRIGHT = False
+
 logger = logging.getLogger(__name__)
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -113,6 +119,71 @@ def _get(url: str, params: dict | None = None, headers: dict | None = None,
             else:
                 logger.warning("Request failed for %s: %s", url, exc)
     return None
+
+
+# ── Playwright (headless browser) helper ─────────────────────────────────────
+
+# Shared browser instance — created once, reused across all scraper calls.
+_browser = None
+_playwright_ctx = None
+
+
+def _ensure_browser():
+    """Launch a persistent headless Chromium browser (singleton)."""
+    global _browser, _playwright_ctx
+    if _browser is not None:
+        return _browser
+    if not _HAS_PLAYWRIGHT:
+        raise RuntimeError(
+            "playwright is not installed. Run:  pip install playwright && playwright install chromium"
+        )
+    _playwright_ctx = sync_playwright().start()
+    _browser = _playwright_ctx.chromium.launch(headless=True)
+    return _browser
+
+
+def _get_page(url: str, wait_selector: str | None = None,
+              wait_ms: int = 3000) -> str | None:
+    """Fetch a URL using a real headless Chromium browser.
+
+    Returns the full page HTML after JavaScript has executed, or None on failure.
+    """
+    browser = _ensure_browser()
+    context = browser.new_context(
+        viewport={"width": 1920, "height": 1080},
+        user_agent=random.choice(_USER_AGENTS),
+        locale="en-US",
+        timezone_id="America/New_York",
+    )
+    page = context.new_page()
+    try:
+        page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        # Wait for a specific element or a fixed delay for JS to render
+        if wait_selector:
+            try:
+                page.wait_for_selector(wait_selector, timeout=8000)
+            except PWTimeout:
+                pass  # page may still have useful content
+        else:
+            page.wait_for_timeout(wait_ms)
+        html = page.content()
+        return html
+    except Exception as exc:
+        logger.warning("Browser fetch failed for %s: %s", url, exc)
+        return None
+    finally:
+        context.close()
+
+
+def shutdown_browser():
+    """Cleanly shut down the shared browser (call at program exit)."""
+    global _browser, _playwright_ctx
+    if _browser:
+        _browser.close()
+        _browser = None
+    if _playwright_ctx:
+        _playwright_ctx.stop()
+        _playwright_ctx = None
 
 
 # ── Job dataclass ─────────────────────────────────────────────────────────────
@@ -255,23 +326,22 @@ class IndeedScraper(BaseScraper):
 # ── LinkedIn ──────────────────────────────────────────────────────────────────
 
 class LinkedInScraper(BaseScraper):
-    """Uses LinkedIn's public guest job-search API (no auth needed)."""
+    """Uses a headless browser to scrape LinkedIn's public job search."""
     name = "LinkedIn"
-    _BASE = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 
     def fetch(self, job_title: str) -> List[Job]:
-        params = {
+        params = urllib.parse.urlencode({
             "keywords": job_title,
             "location": self.location or "United States",
-            "f_TPR": "r86400",       # posted in last 86 400 s = 24 h
+            "f_TPR": "r86400",
             "start": 0,
-        }
-        headers = {**HEADERS, "Referer": "https://www.linkedin.com/jobs/"}
-        resp = _get(self._BASE, params=params, headers=headers)
-        if not resp:
+        })
+        url = f"https://www.linkedin.com/jobs/search/?{params}"
+        html = _get_page(url, wait_selector=".base-search-card__title")
+        if not html:
             return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
         jobs: List[Job] = []
 
         for card in soup.select("li")[:self.max_results]:
@@ -312,21 +382,21 @@ class LinkedInScraper(BaseScraper):
 # ── ZipRecruiter ──────────────────────────────────────────────────────────────
 
 class ZipRecruiterScraper(BaseScraper):
-    """Scrapes ZipRecruiter's job search page."""
+    """Uses a headless browser to scrape ZipRecruiter's job search."""
     name = "ZipRecruiter"
 
     def fetch(self, job_title: str) -> List[Job]:
-        params = {
+        params = urllib.parse.urlencode({
             "search": job_title,
             "location": self.location or "",
             "days": "1",
-        }
-        url = "https://www.ziprecruiter.com/candidate/search"
-        resp = _get(url, params=params)
-        if not resp:
+        })
+        url = f"https://www.ziprecruiter.com/candidate/search?{params}"
+        html = _get_page(url, wait_selector="article.job_result, div[data-testid='job-card']")
+        if not html:
             return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
         jobs: List[Job] = []
 
         for card in soup.select("article.job_result, div[data-testid='job-card']")[:self.max_results]:
@@ -362,7 +432,7 @@ class ZipRecruiterScraper(BaseScraper):
 # ── Glassdoor ─────────────────────────────────────────────────────────────────
 
 class GlassdoorScraper(BaseScraper):
-    """Scrapes Glassdoor's public job search results."""
+    """Uses a headless browser to scrape Glassdoor's job search results."""
     name = "Glassdoor"
 
     def fetch(self, job_title: str) -> List[Job]:
@@ -371,11 +441,11 @@ class GlassdoorScraper(BaseScraper):
             f"https://www.glassdoor.com/Job/jobs.htm"
             f"?sc.keyword={encoded}&fromAge=1&sort.sortType=date"
         )
-        resp = _get(url)
-        if not resp:
+        html = _get_page(url, wait_selector="li[data-test='jobListing']")
+        if not html:
             return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
         jobs: List[Job] = []
 
         for card in soup.select("li[data-test='jobListing'], li.react-job-listing")[:self.max_results]:
@@ -467,20 +537,21 @@ class DiceScraper(BaseScraper):
 # ── SimplyHired ───────────────────────────────────────────────────────────────
 
 class SimplyHiredScraper(BaseScraper):
-    """Scrapes SimplyHired's public search results."""
+    """Uses a headless browser to scrape SimplyHired's search results."""
     name = "SimplyHired"
 
     def fetch(self, job_title: str) -> List[Job]:
-        params = {
+        params = urllib.parse.urlencode({
             "q": job_title,
             "l": self.location or "",
-            "dateposted": "1",       # last 24 h
-        }
-        resp = _get("https://www.simplyhired.com/search", params=params)
-        if not resp:
+            "dateposted": "1",
+        })
+        url = f"https://www.simplyhired.com/search?{params}"
+        html = _get_page(url, wait_selector="div[data-testid='job-card'], article.SerpJob")
+        if not html:
             return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
         jobs: List[Job] = []
 
         for card in soup.select("div[data-testid='job-card'], article.SerpJob")[:self.max_results]:
@@ -519,7 +590,7 @@ class SimplyHiredScraper(BaseScraper):
 # ── Monster ───────────────────────────────────────────────────────────────────
 
 class MonsterScraper(BaseScraper):
-    """Scrapes Monster's public job search."""
+    """Uses a headless browser to scrape Monster's job search."""
     name = "Monster"
 
     def fetch(self, job_title: str) -> List[Job]:
@@ -527,13 +598,13 @@ class MonsterScraper(BaseScraper):
         loc = urllib.parse.quote_plus(self.location or "")
         url = (
             f"https://www.monster.com/jobs/search"
-            f"?q={encoded}&where={loc}&tm=1"  # tm=1 = last 24 h
+            f"?q={encoded}&where={loc}&tm=1"
         )
-        resp = _get(url)
-        if not resp:
+        html = _get_page(url, wait_selector="div[data-testid='JobCard'], section.card-content")
+        if not html:
             return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
         jobs: List[Job] = []
 
         for card in soup.select("div[data-testid='JobCard'], section.card-content")[:self.max_results]:
@@ -712,20 +783,21 @@ class AdzunaScraper(BaseScraper):
 # ── CareerBuilder ─────────────────────────────────────────────────────────────
 
 class CareerBuilderScraper(BaseScraper):
-    """Scrapes CareerBuilder's public job search."""
+    """Uses a headless browser to scrape CareerBuilder's job search."""
     name = "CareerBuilder"
 
     def fetch(self, job_title: str) -> List[Job]:
-        params = {
+        params = urllib.parse.urlencode({
             "keywords": job_title,
             "location": self.location or "",
             "posted": "today",
-        }
-        resp = _get("https://www.careerbuilder.com/jobs", params=params)
-        if not resp:
+        })
+        url = f"https://www.careerbuilder.com/jobs?{params}"
+        html = _get_page(url, wait_selector="li[data-job-did], div.data-results-content")
+        if not html:
             return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(html, "html.parser")
         jobs: List[Job] = []
 
         for card in soup.select("li[data-job-did], div.data-results-content")[:self.max_results]:
