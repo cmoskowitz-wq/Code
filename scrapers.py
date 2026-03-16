@@ -85,12 +85,16 @@ def _get_session(domain: str) -> requests.Session:
 
 
 def _get(url: str, params: dict | None = None, headers: dict | None = None,
-         json_response: bool = False):
-    """Safe GET wrapper with retry, exponential backoff on 429s, and session cookies."""
+         json_response: bool = False, raw_headers: bool = False):
+    """Safe GET wrapper with retry, exponential backoff on 429s, and session cookies.
+
+    If raw_headers is True, *only* the provided headers dict is used
+    (no browser fingerprint headers are added).  Useful for JSON APIs.
+    """
     parsed = urlparse(url)
     domain = parsed.netloc
     session = _get_session(domain)
-    h = _build_browser_headers(url, extra=headers)
+    h = headers or {} if raw_headers else _build_browser_headers(url, extra=headers)
 
     max_attempts = 4
     for attempt in range(max_attempts):
@@ -499,7 +503,11 @@ class DiceScraper(BaseScraper):
         if self.location:
             params["location"] = self.location
 
-        data = _get(self._API, params=params, json_response=True)
+        data = _get(self._API, params=params, json_response=True,
+                    raw_headers=True, headers={
+                        "Accept": "application/json",
+                        "User-Agent": random.choice(_USER_AGENTS),
+                    })
         if not data:
             return []
 
@@ -665,7 +673,13 @@ class TheMuseScraper(BaseScraper):
         # so we fetch recent tech jobs and filter client-side.
         params["category"] = "IT"
 
-        data = _get(self._API, params=params, json_response=True)
+        # Use clean API headers — browser headers confuse this endpoint
+        api_headers = {
+            "Accept": "application/json",
+            "User-Agent": random.choice(_USER_AGENTS),
+        }
+        data = _get(self._API, params=params, headers=api_headers,
+                    json_response=True, raw_headers=True)
         if not data:
             return []
 
@@ -748,7 +762,11 @@ class AdzunaScraper(BaseScraper):
         if self.location:
             params["where"] = self.location
 
-        data = _get(url, params=params, json_response=True)
+        data = _get(url, params=params, json_response=True,
+                    raw_headers=True, headers={
+                        "Accept": "application/json",
+                        "User-Agent": random.choice(_USER_AGENTS),
+                    })
         if not data:
             return []
 
@@ -838,8 +856,9 @@ class RemoteOKScraper(BaseScraper):
     def fetch(self, job_title: str) -> List[Job]:
         keyword = job_title.lower().replace(" ", "+")
         data = _get(f"{self._API}?tag={keyword}",
-                    headers={"Accept": "application/json"},
-                    json_response=True)
+                    headers={"Accept": "application/json",
+                             "User-Agent": random.choice(_USER_AGENTS)},
+                    json_response=True, raw_headers=True)
         if not data or not isinstance(data, list):
             return []
 
@@ -893,7 +912,11 @@ class JobicyScraper(BaseScraper):
             "count": self.max_results,
             "tag": job_title,
         }
-        data = _get(self._API, params=params, json_response=True)
+        data = _get(self._API, params=params, json_response=True,
+                    raw_headers=True, headers={
+                        "Accept": "application/json",
+                        "User-Agent": random.choice(_USER_AGENTS),
+                    })
         if not data:
             return []
 
