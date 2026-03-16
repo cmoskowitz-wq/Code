@@ -849,17 +849,31 @@ class CareerBuilderScraper(BaseScraper):
 # ── Remote OK ─────────────────────────────────────────────────────────────────
 
 class RemoteOKScraper(BaseScraper):
-    """Uses Remote OK's free public JSON API — no auth required."""
+    """Uses a headless browser to fetch RemoteOK's JSON API."""
     name = "RemoteOK"
     _API = "https://remoteok.com/api"
 
     def fetch(self, job_title: str) -> List[Job]:
+        import json as _json
+
         keyword = job_title.lower().replace(" ", "+")
-        data = _get(f"{self._API}?tag={keyword}",
-                    headers={"Accept": "application/json",
-                             "User-Agent": random.choice(_USER_AGENTS)},
-                    json_response=True, raw_headers=True)
-        if not data or not isinstance(data, list):
+        url = f"{self._API}?tag={keyword}"
+        html = _get_page(url, wait_ms=3000)
+        if not html:
+            return []
+
+        # The browser wraps the JSON in <pre> tags — extract it
+        soup = BeautifulSoup(html, "html.parser")
+        pre = soup.select_one("pre")
+        raw = pre.get_text() if pre else html
+
+        try:
+            data = _json.loads(raw)
+        except (ValueError, TypeError):
+            logger.warning("[RemoteOK] Could not parse JSON response")
+            return []
+
+        if not isinstance(data, list):
             return []
 
         cutoff = datetime.now(timezone.utc) - timedelta(hours=self.hours_ago)
@@ -878,13 +892,13 @@ class RemoteOKScraper(BaseScraper):
                 continue
 
             slug = item.get("slug", "")
-            url = f"https://remoteok.com/remote-jobs/{slug}" if slug else ""
+            job_url = f"https://remoteok.com/remote-jobs/{slug}" if slug else ""
 
             job = Job(
                 title=item.get("position", "N/A"),
                 company=item.get("company", "Unknown"),
                 location="Remote",
-                url=url,
+                url=job_url,
                 source=self.name,
                 posted=posted,
                 remote=True,
