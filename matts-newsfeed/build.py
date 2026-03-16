@@ -23,9 +23,7 @@ PyInstaller.__main__.run([
     "--hidden-import", "PIL",
     # Collect customtkinter data files (themes, etc.)
     "--collect-data", "customtkinter",
-    # Exclude problematic modules not needed by this app
-    "--exclude-module", "cryptography",
-    "--exclude-module", "ssl",
+    # Exclude modules not needed by this app
     "--exclude-module", "pytest",
     "--exclude-module", "unittest",
     # Work/dist dirs
