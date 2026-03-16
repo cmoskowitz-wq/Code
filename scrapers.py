@@ -9,12 +9,14 @@ subclassing BaseScraper and registering the class in SCRAPER_REGISTRY.
 from __future__ import annotations
 
 import logging
+import random
 import re
 import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+from urllib.parse import urlparse
 
 import xml.etree.ElementTree as ET
 
@@ -25,32 +27,78 @@ logger = logging.getLogger(__name__)
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
+# Rotate through several recent, realistic Chrome User-Agent strings
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+]
 
-REQUEST_TIMEOUT = 15  # seconds
+REQUEST_TIMEOUT = 20  # seconds
+
+
+def _build_browser_headers(url: str, extra: dict | None = None) -> dict:
+    """Build a full set of headers that mimic a real Chrome browser."""
+    parsed = urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    headers = {
+        "User-Agent": random.choice(_USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Referer": origin + "/",
+        "DNT": "1",
+        "Sec-CH-UA": '"Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "Connection": "keep-alive",
+    }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+# One session per board to maintain cookies across requests (like a browser)
+_sessions: dict[str, requests.Session] = {}
+
+
+def _get_session(domain: str) -> requests.Session:
+    """Get or create a persistent session for a domain."""
+    if domain not in _sessions:
+        _sessions[domain] = requests.Session()
+    return _sessions[domain]
 
 
 def _get(url: str, params: dict | None = None, headers: dict | None = None,
          json_response: bool = False):
-    """Safe GET wrapper with a single retry on transient errors."""
-    h = {**HEADERS, **(headers or {})}
+    """Safe GET wrapper with retry, browser-like headers, and session cookies."""
+    parsed = urlparse(url)
+    domain = parsed.netloc
+    session = _get_session(domain)
+    h = _build_browser_headers(url, extra=headers)
+
     for attempt in range(2):
         try:
-            resp = requests.get(url, params=params, headers=h,
-                                timeout=REQUEST_TIMEOUT)
+            # Randomised delay to avoid machine-gun request patterns
+            if attempt > 0:
+                time.sleep(random.uniform(2, 4))
+
+            resp = session.get(url, params=params, headers=h,
+                               timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             return resp.json() if json_response else resp
         except requests.RequestException as exc:
             if attempt == 0:
-                time.sleep(2)
+                time.sleep(random.uniform(1.5, 3))
             else:
                 logger.warning("Request failed for %s: %s", url, exc)
     return None
@@ -118,7 +166,7 @@ class BaseScraper:
                 for j in jobs:
                     j.search_term = title
                 results.extend(jobs)
-                time.sleep(1.2)  # polite rate limiting
+                time.sleep(random.uniform(1.5, 3.5))  # human-like delay
             except Exception as exc:
                 logger.error("[%s] Error searching '%s': %s", self.name, title, exc)
         return results
