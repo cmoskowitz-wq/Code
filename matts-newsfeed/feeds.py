@@ -22,24 +22,48 @@ TIMEOUT = 15
 # ---------- Default kratom sources ----------
 
 DEFAULT_SOURCES = [
-    # Advocacy / organizations
-    {"name": "American Kratom Association", "url": "https://www.americankratom.org/media/news", "source_type": "scrape", "category": "advocacy"},
-    {"name": "Kratom Science", "url": "https://www.kratomscience.com/feed/", "source_type": "rss", "category": "science"},
-
-    # News via Google News RSS
+    # === Google News RSS (broad + targeted) ===
     {"name": "Google News — Kratom", "url": "https://news.google.com/rss/search?q=kratom&hl=en-US&gl=US&ceid=US:en", "source_type": "rss", "category": "news"},
     {"name": "Google News — Kratom FDA", "url": "https://news.google.com/rss/search?q=kratom+FDA&hl=en-US&gl=US&ceid=US:en", "source_type": "rss", "category": "regulation"},
-    {"name": "Google News — Kratom legislation", "url": "https://news.google.com/rss/search?q=kratom+legislation+law&hl=en-US&gl=US&ceid=US:en", "source_type": "rss", "category": "regulation"},
+    {"name": "Google News — Kratom Legislation", "url": "https://news.google.com/rss/search?q=kratom+legislation+law+ban&hl=en-US&gl=US&ceid=US:en", "source_type": "rss", "category": "regulation"},
+    {"name": "Google News — 7-Hydroxymitragynine", "url": "https://news.google.com/rss/search?q=7-hydroxymitragynine&hl=en-US&gl=US&ceid=US:en", "source_type": "rss", "category": "regulation"},
 
-    # Reddit
-    {"name": "r/kratom", "url": "https://www.reddit.com/r/kratom/new/.rss", "source_type": "rss", "category": "community"},
-    {"name": "r/KratomKorner", "url": "https://www.reddit.com/r/KratomKorner/new/.rss", "source_type": "rss", "category": "community"},
+    # === Kratom-focused blogs & sites (RSS) ===
+    {"name": "Kratom Science", "url": "https://www.kratomscience.com/feed/", "source_type": "rss", "category": "science"},
+    {"name": "Kratom Science Podcast", "url": "https://feeds.buzzsprout.com/999864.rss", "source_type": "rss", "category": "science"},
+    {"name": "Top Tree Herbs Blog", "url": "https://toptreeherbs.com/feed/", "source_type": "rss", "category": "news"},
+    {"name": "The Kratom Company Blog", "url": "https://thekratomco.com/feed/", "source_type": "rss", "category": "news"},
+    {"name": "Kraken Kratom Resources", "url": "https://krakenkratom.com/resources/feed/", "source_type": "rss", "category": "news"},
+    {"name": "Christopher's Organic Botanicals", "url": "https://christophersorganicbotanicals.com/blogs/news.atom", "source_type": "rss", "category": "news"},
+    {"name": "CaliBotanicals Blog", "url": "https://calibotanicals.com/feed/", "source_type": "rss", "category": "news"},
 
-    # Science / PubMed
-    {"name": "PubMed — Kratom research", "url": "https://pubmed.ncbi.nlm.nih.gov/rss/search/1wCKfMEfKODRHOYBu3RCOSL1UbMaFz3JwDxMBfGMKzavJXGO8W/?limit=20&utm_campaign=pubmed-2&fc=20210101000000", "source_type": "rss", "category": "science"},
-
-    # FDA press releases (general, filtered client-side)
+    # === Government / Regulation (RSS) ===
     {"name": "FDA Press Releases", "url": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml", "source_type": "rss", "category": "regulation"},
+    {"name": "Federal Register — Kratom", "url": "https://www.federalregister.gov/documents/search.atom?conditions%5Bterm%5D=kratom", "source_type": "rss", "category": "regulation"},
+    {"name": "Federal Register — 7-OH", "url": "https://www.federalregister.gov/documents/search.atom?conditions%5Bterm%5D=7-hydroxymitragynine", "source_type": "rss", "category": "regulation"},
+
+    # === Science / PubMed (RSS) ===
+    {"name": "PubMed — Kratom Research", "url": "https://pubmed.ncbi.nlm.nih.gov/rss/search/1wCKfMEfKODRHOYBu3RCOSL1UbMaFz3JwDxMBfGMKzavJXGO8W/?limit=20&utm_campaign=pubmed-2&fc=20210101000000", "source_type": "rss", "category": "science"},
+
+    # === Reddit (RSS) ===
+    {"name": "r/kratom", "url": "https://www.reddit.com/r/kratom/.rss", "source_type": "rss", "category": "community"},
+    {"name": "r/kratom — News Flair", "url": "https://www.reddit.com/r/kratom/search.rss?q=flair%3Anews&sort=new", "source_type": "rss", "category": "community"},
+    {"name": "r/KratomKorner", "url": "https://www.reddit.com/r/KratomKorner/.rss", "source_type": "rss", "category": "community"},
+    {"name": "r/quittingkratom", "url": "https://www.reddit.com/r/quittingkratom/.rss", "source_type": "rss", "category": "community"},
+    {"name": "Reddit Search — Kratom News", "url": "https://www.reddit.com/search.rss?q=kratom+news&sort=new", "source_type": "rss", "category": "community"},
+
+    # === Advocacy organizations (scrape) ===
+    {"name": "American Kratom Association — News", "url": "https://www.americankratom.org/news", "source_type": "scrape", "category": "advocacy"},
+    {"name": "AKA — Press Releases", "url": "https://www.americankratom.org/releases", "source_type": "scrape", "category": "advocacy"},
+    {"name": "Protect Kratom (AKA Action)", "url": "https://www.protectkratom.org/", "source_type": "scrape", "category": "advocacy"},
+    {"name": "Botanical Education Alliance", "url": "https://www.botanicaleducation.com/", "source_type": "scrape", "category": "advocacy"},
+    {"name": "Kratom United", "url": "https://kratomunited.com/", "source_type": "scrape", "category": "advocacy"},
+
+    # === Government / Regulation (scrape) ===
+    {"name": "FDA — Kratom Page", "url": "https://www.fda.gov/news-events/public-health-focus/fda-and-kratom", "source_type": "scrape", "category": "regulation"},
+    {"name": "DEA Press Releases", "url": "https://www.dea.gov/press-releases", "source_type": "scrape", "category": "regulation"},
+    {"name": "NIDA — Kratom Research", "url": "https://nida.nih.gov/research-topics/kratom", "source_type": "scrape", "category": "science"},
+    {"name": "LAPPA — Kratom State Laws", "url": "https://legislativeanalysis.org/kratom-summary-of-state-laws/", "source_type": "scrape", "category": "regulation"},
 ]
 
 
@@ -128,27 +152,44 @@ def fetch_rss(url: str, source_name: str, category: str = "general") -> List[dic
         return []
 
 
-def fetch_scrape_aka(url: str, source_name: str) -> List[dict]:
-    """Scrape the AKA news page as a fallback."""
+def fetch_scrape(url: str, source_name: str, category: str = "general") -> List[dict]:
+    """Generic scraper: extract article-like links from a page."""
     articles = []
     try:
         resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-        for a_tag in soup.select("a[href]"):
+        from urllib.parse import urlparse, urljoin
+        base_domain = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+        seen_urls = set()
+
+        # Look for article-like links: <a> tags with substantial text
+        for a_tag in soup.select("article a[href], .post a[href], .news a[href], "
+                                  ".entry a[href], .content a[href], h2 a[href], "
+                                  "h3 a[href], .card a[href], a[href]"):
             title = a_tag.get_text(strip=True)
             href = a_tag.get("href", "")
-            if title and href and "/media/" in href and len(title) > 20:
-                full_url = href if href.startswith("http") else f"https://www.americankratom.org{href}"
-                articles.append({
-                    "title": title,
-                    "url": full_url,
-                    "source": source_name,
-                    "author": "AKA",
-                    "summary": "",
-                    "published": "",
-                    "category": "advocacy",
-                })
+            if not title or not href or len(title) < 15:
+                continue
+            # Skip nav/footer/utility links
+            if any(skip in href.lower() for skip in ["#", "javascript:", "mailto:", "login", "signup", "cart"]):
+                continue
+            full_url = href if href.startswith("http") else urljoin(base_domain, href)
+            if full_url in seen_urls:
+                continue
+            seen_urls.add(full_url)
+            articles.append({
+                "title": title[:200],
+                "url": full_url,
+                "source": source_name,
+                "author": "",
+                "summary": "",
+                "published": "",
+                "category": category,
+            })
+
+        # Limit to avoid flooding DB with nav links
+        articles = articles[:50]
     except Exception as e:
         log.warning(f"Scrape failed for {source_name}: {e}")
     return articles
@@ -181,7 +222,7 @@ def fetch_all_sources(progress_callback=None):
         if stype == "rss":
             articles = fetch_rss(url, name, cat)
         elif stype == "scrape":
-            articles = fetch_scrape_aka(url, name)
+            articles = fetch_scrape(url, name, cat)
         else:
             articles = []
 
