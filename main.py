@@ -26,6 +26,7 @@ import yaml
 from dotenv import load_dotenv
 
 from email_sender import build_html_report, send_report
+from job_history import load_seen_jobs, save_seen_jobs, job_key
 from scrapers import Job, build_scrapers, deduplicate, shutdown_browser
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -101,12 +102,29 @@ def run_job(cfg: dict, dry_run: bool = False) -> List[Job]:  # noqa: F821
     all_jobs = deduplicate(all_jobs)
     logger.info("Total unique jobs after deduplication: %d", len(all_jobs))
 
-    if dry_run:
-        _print_dry_run(all_jobs, cfg)
-    else:
-        send_report(all_jobs, cfg)
+    # Filter out jobs we've already emailed in previous runs
+    seen = load_seen_jobs()
+    new_jobs = [j for j in all_jobs if job_key(j.title, j.company) not in seen]
+    logger.info(
+        "%d new jobs, %d previously seen (filtered out)",
+        len(new_jobs), len(all_jobs) - len(new_jobs),
+    )
 
-    return all_jobs
+    if not new_jobs:
+        logger.info("No new jobs to report — skipping email.")
+        return []
+
+    # Build the updated seen set (remember everything, not just new)
+    updated_seen = seen | {job_key(j.title, j.company) for j in all_jobs}
+
+    if dry_run:
+        _print_dry_run(new_jobs, cfg)
+        save_seen_jobs(updated_seen)
+    else:
+        send_report(new_jobs, cfg)
+        save_seen_jobs(updated_seen)
+
+    return new_jobs
 
 
 def _print_dry_run(jobs: list[Job], cfg: dict) -> None:
@@ -155,6 +173,11 @@ def start_scheduler(cfg: dict) -> None:
     elif sched == "hourly":
         logger.info("Scheduling hourly digest.")
         schedule.every().hour.do(run_job, cfg=cfg)
+        run_job(cfg)
+
+    elif sched == "every_6h":
+        logger.info("Scheduling digest every 6 hours.")
+        schedule.every(6).hours.do(run_job, cfg=cfg)
         run_job(cfg)
 
     else:

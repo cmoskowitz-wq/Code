@@ -1,6 +1,9 @@
 # Secrets — never commit these
 .env
 
+# Job history (machine-specific, regenerated each run)
+seen_jobs.json
+
 # Python
 __pycache__/
 *.py[cod]

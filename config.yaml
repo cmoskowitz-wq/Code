@@ -80,7 +80,7 @@ job_boards:
 
 # ── Search filters ────────────────────────────────────────────
 search:
-  hours_ago: 24          # Only return jobs posted within this many hours
+  hours_ago: 8           # Only return jobs posted within this many hours (8h covers 6h window + overlap)
   location: ""           # Leave blank to search nationally; e.g. "New York, NY"
   remote_ok: true        # Include remote positions
   results_per_board: 25  # Max results per board per title (where supported)
@@ -101,7 +101,7 @@ email:
 
   # ── Schedule ──────────────────────────────────────────────
   # How often to send the digest email.
-  # Options: "daily", "hourly", or a cron expression like "0 8 * * *"
-  schedule: "daily"
+  # Options: "daily", "hourly", "every_6h", or a custom "HH:MM" time
+  schedule: "every_6h"
   daily_time: "08:00"    # 24-hour time (HH:MM) used when schedule = "daily"
   timezone: "America/New_York"
