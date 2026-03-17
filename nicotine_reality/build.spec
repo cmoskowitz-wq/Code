@@ -1,8 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 
-block_cipher = None
-
 a = Analysis(
     ['main.py'],
     pathex=[os.path.abspath('.')],
@@ -29,14 +27,11 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=['tkinter', 'matplotlib', 'numpy', 'scipy'],
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
@@ -48,7 +43,7 @@ exe = EXE(
     name='NicotineReality',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,

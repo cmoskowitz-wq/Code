@@ -20,7 +20,7 @@ from modules.theme import (BG, SURFACE, CARD, ACCENT, ACCENT2, TEXT, TEXT_DIM,
                             WARNING, BORDER, HOVER_CARD, GLOBAL_STYLESHEET,
                             font, apply_dark_palette, fade_in)
 from modules.start_screen import StartScreen
-from modules.stories import Stories
+from modules.stories import StoriesScreen as Stories
 from modules.body_simulator import BodySimulator
 from modules.addiction_simulator import AddictionSimulator
 from modules.graphic_reality import GraphicReality
@@ -232,7 +232,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._stack)
 
         # Build start screen immediately
-        start = StartScreen(self)
+        # StartScreen and StoriesScreen (agent-written) expect a callable nav_callback
+        start = StartScreen(self.go_to_screen)
         self._screen_cache["start"] = start
         self._stack.addWidget(start)
         self._stack.setCurrentWidget(start)
@@ -276,7 +277,8 @@ class MainWindow(QMainWindow):
     def _build_screen(self, name: str):
         builders = {
             "nav":       lambda: NavHub(self),
-            "stories":   lambda: Stories(self),
+            "nav_hub":   lambda: NavHub(self),   # alias used by agent-written modules
+            "stories":   lambda: Stories(self.go_to_screen),
             "body":      lambda: BodySimulator(self),
             "addiction": lambda: AddictionSimulator(self),
             "graphic":   lambda: GraphicReality(self),
