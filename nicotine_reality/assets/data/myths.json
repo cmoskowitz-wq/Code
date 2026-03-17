@@ -1,0 +1,50 @@
+[
+  {
+    "id": 1,
+    "question": "Vaping is just water vapor — it's completely harmless to your lungs.",
+    "correct_answer": "myth",
+    "explanation": "Vape aerosol contains ultrafine particles, heavy metals like nickel and lead, volatile organic compounds, and nicotine. Studies have found vaping causes measurable inflammation and damage to airway cells within weeks of starting. The CDC has documented thousands of cases of EVALI (e-cigarette or vaping product use-associated lung injury), including deaths."
+  },
+  {
+    "id": 2,
+    "question": "Nicotine addiction can develop after just a few uses, even in teens.",
+    "correct_answer": "reality",
+    "explanation": "The adolescent brain is significantly more vulnerable to nicotine addiction than the adult brain. Research shows that teens can develop dependence symptoms — cravings, irritability when not using — after only a few exposures. The developing prefrontal cortex creates stronger, faster-forming neural pathways for addiction between ages 13-18."
+  },
+  {
+    "id": 3,
+    "question": "Quitting nicotine is easy if you really want to — it's just a matter of willpower.",
+    "correct_answer": "myth",
+    "explanation": "Nicotine is classified by researchers as more addictive than heroin or cocaine in terms of the difficulty of quitting. Most people require 8-11 serious quit attempts before succeeding. Nicotine physically alters the brain's dopamine system, creating genuine physiological dependence that willpower alone cannot override without significant struggle."
+  },
+  {
+    "id": 4,
+    "question": "Secondhand vape aerosol is harmless to people nearby.",
+    "correct_answer": "myth",
+    "explanation": "Secondhand vape aerosol has been shown to contain nicotine, ultrafine particles, formaldehyde, and acrolein — all of which are absorbed by bystanders. Studies measuring indoor air quality during vaping found toxic particle concentrations comparable to secondhand cigarette smoke. Children and people with asthma are especially vulnerable."
+  },
+  {
+    "id": 5,
+    "question": "Nicotine actually relieves stress and anxiety, making it useful for mental health.",
+    "correct_answer": "myth",
+    "explanation": "Nicotine creates a cycle where it temporarily relieves the anxiety and irritability caused by its own withdrawal. Studies show that non-smokers have lower baseline anxiety than smokers, and that smokers' anxiety levels decrease to below their own baseline after quitting for several weeks. The 'stress relief' is almost entirely the relief of nicotine withdrawal itself."
+  },
+  {
+    "id": 6,
+    "question": "About 1 in 4 high school students in the US currently uses a tobacco or nicotine product.",
+    "correct_answer": "reality",
+    "explanation": "CDC data consistently shows that approximately 1 in 4 to 1 in 5 high school students report current use of a tobacco or nicotine product, with e-cigarettes being the most common. This means in a classroom of 30 students, statistically 6-8 are current nicotine users — far more than most teens realize about their own peers."
+  },
+  {
+    "id": 7,
+    "question": "'Light' or 'low-tar' cigarettes are significantly safer than regular cigarettes.",
+    "correct_answer": "myth",
+    "explanation": "Smokers of light cigarettes compensate by inhaling more deeply, taking more puffs, and covering ventilation holes — resulting in nearly identical toxic exposure to regular cigarettes. The FTC banned the terms 'light,' 'mild,' and 'low' from cigarette marketing in 2010 after it was proven these labels were deliberately misleading. Light cigarettes carry the same cancer and heart disease risks."
+  },
+  {
+    "id": 8,
+    "question": "Nicotine pouches and 'tobacco-free' products are safe because they don't involve smoking.",
+    "correct_answer": "myth",
+    "explanation": "Nicotine pouches deliver the same addictive nicotine to the same developing brain, causing the same long-term neurological changes regardless of delivery method. They also cause gum recession, mouth sores, and increased heart rate. 'Tobacco-free' does not mean 'nicotine-free' or 'safe.' The addiction formed is identical to that from cigarettes or vaping."
+  }
+]

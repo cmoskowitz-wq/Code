@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "name": "Jordan",
+    "age": 16,
+    "summary": "Started vaping at a party just to fit in — was addicted within three months.",
+    "full_story": "Jordan was a sophomore who never thought twice about nicotine until a Friday night party where everyone seemed to have a vape. 'Just once,' Jordan told himself. Within two weeks, Jordan was buying pods with lunch money. By month three, waking up without a hit caused shaking hands and an inability to focus through first period. Jordan's grades dropped from a 3.4 GPA to below 2.0 in a single semester, and the once-tight friend group began to notice something had changed — Jordan was always slipping away to vape.",
+    "timeline": [
+      {"offset": "Week 1", "event": "First vape at a party. Felt dizzy but \"cool\"."},
+      {"offset": "Week 3", "event": "Borrowing friends' vapes between classes."},
+      {"offset": "Month 2", "event": "Buying own pods. Spending $60/month."},
+      {"offset": "Month 3", "event": "Can't concentrate in morning without nicotine. Teachers notice."},
+      {"offset": "Month 5", "event": "Tried to quit. Lasted 18 hours. \"I was a different person — angry, shaking.\""}
+    ],
+    "quote": "I thought I was just doing it to hang out. I didn't realize I was already dependent until I tried to stop and literally couldn't get through a school day.",
+    "graphic_description": "Bronchoscopy image showing inflamed bronchial walls with visible mucous buildup. Tissue appears red and irritated. Chemical residue visible on airway lining consistent with vaping-related lung injury (EVALI)."
+  },
+  {
+    "id": 2,
+    "name": "Maya",
+    "age": 15,
+    "summary": "A competitive swimmer whose lung capacity dropped 30% in one year of vaping.",
+    "full_story": "Maya had been swimming competitively since age eight and had real hopes for a college scholarship. A teammate introduced her to vaping, saying it 'didn't affect lungs like cigarettes.' Within six months, Maya's times were slipping. Her coach noticed she was gasping after events she used to finish easily. A pulmonary function test revealed a 30% reduction in lung capacity. The scholarship scouts stopped calling. Maya still vapes today because quitting feels impossible — and swimming, which was her entire identity, is now just a memory.",
+    "timeline": [
+      {"offset": "Age 14", "event": "All-state swimmer. Personal best times. Scholarship prospects strong."},
+      {"offset": "Month 1", "event": "First vape. Told it's 'just vapor, not smoke.'"},
+      {"offset": "Month 4", "event": "Race times begin slipping. Blames it on training schedule."},
+      {"offset": "Month 7", "event": "Doctor orders pulmonary function test. Results: 30% capacity loss."},
+      {"offset": "Month 12", "event": "Removed from competitive team. Scholarship prospects gone."}
+    ],
+    "quote": "I was told it was just water vapor. I believed it because I wanted to believe it. My lungs didn't care what I believed.",
+    "graphic_description": "Pulmonary function test graph showing FEV1 values at 58% of predicted normal for a 15-year-old female athlete. Spirometry curve shows obstructive pattern. Comparative overlay shows healthy athlete lung function for reference."
+  },
+  {
+    "id": 3,
+    "name": "Alex",
+    "age": 17,
+    "summary": "Used nicotine to manage anxiety — now can't function without it.",
+    "full_story": "Alex struggled with social anxiety since middle school and discovered that a quick vape before class made talking to people feel manageable. What Alex didn't know was that nicotine temporarily relieves anxiety it actually causes — creating a cycle of dependency disguised as self-medication. Within four months, Alex needed to vape just to feel baseline normal. Skipping a dose brought on panic attacks worse than anything felt before. Alex's therapist explained that nicotine had hijacked the brain's stress-response system entirely, and untangling that would take months of difficult withdrawal.",
+    "timeline": [
+      {"offset": "Age 15", "event": "Diagnosed with generalized anxiety disorder."},
+      {"offset": "Month 1", "event": "Discovers vaping reduces social anxiety symptoms temporarily."},
+      {"offset": "Month 3", "event": "Vaping before every social situation. 'It's just my anxiety medication.'"},
+      {"offset": "Month 5", "event": "Anxiety without nicotine now worse than original baseline."},
+      {"offset": "Month 8", "event": "Panic attacks triggered by going more than 2 hours without vaping."}
+    ],
+    "quote": "I thought I found something that helped me. It turned out I found something that made me need it to feel like myself at all.",
+    "graphic_description": "fMRI scan showing reduced prefrontal cortex activation and hyperactive amygdala response during nicotine withdrawal state. Color-coded activity map shows blue (low activity) regions in areas responsible for emotional regulation compared to healthy baseline scan."
+  },
+  {
+    "id": 4,
+    "name": "Devon",
+    "age": 14,
+    "summary": "Spent over $4,200 on vapes in two years — money meant for a gaming PC.",
+    "full_story": "Devon started vaping at 14 with a device borrowed from an older cousin. What started as a weekend thing became daily, then hourly. Devon was meticulous enough to track spending in a phone notes app — and at the two-year mark, tallied up $4,247 spent on pods, devices, and replacements. That was the exact amount Devon had been saving for a gaming setup. Devon's parents didn't know until a routine bag search revealed 14 empty pods. The family confrontation was devastating — not because of the nicotine, Devon later said, but because of all the lies told to keep it hidden.",
+    "timeline": [
+      {"offset": "Age 14", "event": "First vape borrowed from cousin. 'Just trying it.'"},
+      {"offset": "Month 2", "event": "Buying own disposables. $30/week."},
+      {"offset": "Month 6", "event": "Upgraded to pod system. Spending increases to $60-80/week."},
+      {"offset": "Year 1", "event": "$1,800 spent. Gaming savings account depleted."},
+      {"offset": "Year 2", "event": "$4,247 total. Parents discover. Trust destroyed."}
+    ],
+    "quote": "I kept a note in my phone of every dollar I spent. Looking at that number — $4,247 — I felt sick. That was supposed to be my future.",
+    "graphic_description": "Dental X-ray showing significant enamel erosion and early periodontal bone loss in a 16-year-old patient. Comparative image shows normal bone density for same age group. Notes indicate nicotine-related reduced blood flow to gum tissue."
+  },
+  {
+    "id": 5,
+    "name": "Sam",
+    "age": 18,
+    "summary": "Has tried to quit 11 times — and is still smoking today.",
+    "full_story": "Sam started smoking cigarettes at 15 to look older and has tried to quit eleven times in three years. Each attempt has lasted between one day and six weeks before a stressful situation — a test, a breakup, a fight with parents — pulls Sam back in. Sam has tried cold turkey, nicotine patches, gum, and an app-based program. Nothing has stuck. What Sam describes most vividly isn't the craving for nicotine itself, but the way every emotion now feels incomplete without a cigarette attached to it. 'It's not that I need it to feel good,' Sam says. 'I need it to feel anything at all.'",
+    "timeline": [
+      {"offset": "Age 15", "event": "First cigarette. 'Just to see what the fuss was about.'"},
+      {"offset": "Age 16", "event": "Daily smoker. First quit attempt lasts 3 days."},
+      {"offset": "Age 17", "event": "5 quit attempts. Longest: 6 weeks. Relapsed during exam period."},
+      {"offset": "Age 17.5", "event": "Developed morning cough. Doctor visit reveals early airway changes."},
+      {"offset": "Age 18", "event": "11 quit attempts. Still smoking. 'I don't know who I am without it.'"}
+    ],
+    "quote": "Every time I quit, I think: this is it. Then something happens. And I'm outside, lighter in hand, before I've even made a decision. My body just goes.",
+    "graphic_description": "Laryngoscopy image showing vocal cord changes and early squamous hyperplasia in an 18-year-old smoker. Tissue discoloration and thickening visible compared to healthy baseline. Pathology notes indicate precancerous cellular changes after 3 years of smoking."
+  }
+]
