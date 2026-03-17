@@ -1,7 +1,7 @@
 @echo off
 REM ============================================================
 REM  Moskowitz Gaming — Windows Build Script
-REM  Run this on a Windows machine to produce GamingHUD.exe
+REM  Run this on a Windows machine to produce MoskowitzGaming.exe
 REM ============================================================
 
 echo.
@@ -17,6 +17,12 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+REM Kill any running instance before building
+echo  Closing any running instances...
+taskkill /F /IM MoskowitzGaming.exe >nul 2>&1
+taskkill /F /IM GamingHUD.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
 
 REM Install dependencies
 echo  [1/3] Installing dependencies...

@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Build script for Gaming HUD — creates a standalone Windows .exe using PyInstaller.
+"""Build script for Moskowitz Gaming — creates a standalone Windows .exe using PyInstaller.
 
 Usage (on Windows):
     python build_hud.py
 
 This will produce:
-    dist/GamingHUD.exe   — single-file portable executable
+    dist/MoskowitzGaming.exe   — single-file portable executable
 """
 
 from __future__ import annotations
 
+import gc
 import os
+import platform
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -91,16 +94,70 @@ def generate_icon():
         return False
 
 
+def _safe_rmtree(path: Path, retries: int = 3) -> bool:
+    """Remove a directory tree, retrying on Windows file-lock errors."""
+    if not path.exists():
+        return True
+
+    for attempt in range(retries):
+        try:
+            # On Windows, force-clear read-only flags before deleting
+            def _on_error(func, fpath, exc_info):
+                try:
+                    os.chmod(fpath, 0o777)
+                    func(fpath)
+                except OSError:
+                    pass
+
+            shutil.rmtree(path, onexc=_on_error)
+            return True
+        except (PermissionError, OSError) as e:
+            if attempt < retries - 1:
+                wait = 2 ** attempt
+                print(f"  Locked: {e.filename or path}")
+                print(f"  Retrying in {wait}s... "
+                      f"(attempt {attempt + 2}/{retries})")
+                gc.collect()
+                time.sleep(wait)
+            else:
+                return False
+    return False
+
+
+def _kill_old_process():
+    """Try to kill a running instance of the old EXE on Windows."""
+    if platform.system() != "Windows":
+        return
+
+    for name in [f"{APP_NAME}.exe", "GamingHUD.exe"]:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/IM", name],
+                capture_output=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+
 def build():
     print("=" * 60)
     print(f"  Building {APP_NAME}")
     print("=" * 60)
 
+    # Kill any running instance of the app before cleaning
+    _kill_old_process()
+
     # Clean previous builds
     for d in [DIST, BUILD]:
         if d.exists():
-            shutil.rmtree(d)
-            print(f"  Cleaned {d}")
+            if _safe_rmtree(d):
+                print(f"  Cleaned {d}")
+            else:
+                print(f"\n  ERROR: Cannot clean {d}")
+                print(f"  A file is locked (antivirus? app still running?).")
+                print(f"  Please close {APP_NAME} and try again.")
+                sys.exit(1)
 
     # Generate icon
     print("\n[1/3] Generating application icon...")
