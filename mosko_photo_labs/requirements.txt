@@ -1,0 +1,25 @@
+# Mosko Photo Labs — Python dependencies
+# Install with: pip install -r requirements.txt
+
+# ── UI framework ──────────────────────────────────────────────────────────
+PySide6>=6.4.0
+
+# ── Image handling ────────────────────────────────────────────────────────
+Pillow>=10.0.0
+
+# ── EXIF read/write ───────────────────────────────────────────────────────
+piexif>=1.1.3
+exifread>=3.0.0
+
+# ── RAW file support (LibRaw binding) ─────────────────────────────────────
+# Uncomment if RAW preview rendering is needed (requires LibRaw):
+# rawpy>=0.17.0
+
+# ── Scheduling / misc ─────────────────────────────────────────────────────
+# (no additional runtime deps beyond the above)
+
+# ── Testing ───────────────────────────────────────────────────────────────
+pytest>=7.0.0
+
+# ── Build / packaging ─────────────────────────────────────────────────────
+pyinstaller>=6.0.0
