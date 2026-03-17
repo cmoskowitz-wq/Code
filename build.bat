@@ -1,12 +1,12 @@
 @echo off
 REM ============================================================
-REM  Gaming HUD — Windows Build Script
+REM  Moskowitz Gaming — Windows Build Script
 REM  Run this on a Windows machine to produce GamingHUD.exe
 REM ============================================================
 
 echo.
 echo  ========================================
-echo   Gaming HUD - Build Script
+echo   Moskowitz Gaming - Build Script
 echo  ========================================
 echo.
 
@@ -43,6 +43,6 @@ if errorlevel 1 (
 echo.
 echo  [3/3] Done! Your executable is in the dist\ folder.
 echo.
-echo  To run:  dist\GamingHUD.exe
+echo  To run:  dist\MoskowitzGaming.exe
 echo.
 pause

@@ -38,7 +38,7 @@ class HUDOverlay(QWidget):
     # ── Window Setup ────────────────────────────────────────────────────
 
     def _setup_window(self):
-        self.setWindowTitle("Gaming HUD")
+        self.setWindowTitle("Moskowitz Gaming")
         self.setObjectName("HUDPanel")
         self.setFixedWidth(styles.HUD_WIDTH)
         self.setMinimumHeight(styles.HUD_MIN_HEIGHT)
@@ -71,7 +71,7 @@ class HUDOverlay(QWidget):
         title_bar = QHBoxLayout()
         title_bar.setSpacing(4)
 
-        title = QLabel("GAMING HUD")
+        title = QLabel("MOSKOWITZ GAMING")
         title.setObjectName("title")
         tf = QFont("Segoe UI, Arial, sans-serif")
         tf.setPixelSize(styles.FONT_SIZE_TITLE)

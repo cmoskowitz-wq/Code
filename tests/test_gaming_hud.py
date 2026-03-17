@@ -218,7 +218,7 @@ class TestVersion:
 
     def test_app_name(self):
         from gaming_hud import __app_name__
-        assert __app_name__ == "Gaming HUD"
+        assert __app_name__ == "Moskowitz Gaming"
 
 
 # ── Build Script Tests ──────────────────────────────────────────────────────

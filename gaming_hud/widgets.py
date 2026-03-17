@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt, QRectF, QTimer, pyqtProperty
+from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtGui import (
     QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QBrush,
 )
@@ -347,23 +347,16 @@ class KeyButton(QWidget):
         self._active = False
         self._glow = 0.0
         self.setFixedSize(width, height)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
 
         self._glow_timer = QTimer(self)
         self._glow_timer.setInterval(16)  # ~60fps animation
         self._glow_timer.timeout.connect(self._animate_glow)
 
-    @pyqtProperty(float)
-    def glow(self):
-        return self._glow
-
-    @glow.setter
-    def glow(self, val):
-        self._glow = val
-        self.update()
-
     def set_active(self, active: bool):
         self._active = active
-        self._glow_timer.start()
+        if not self._glow_timer.isActive():
+            self._glow_timer.start()
 
     def _animate_glow(self):
         target = 1.0 if self._active else 0.0
@@ -436,6 +429,7 @@ class KeyVisualizer(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

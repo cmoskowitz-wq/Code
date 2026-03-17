@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
-APP_NAME = "GamingHUD"
+APP_NAME = "MoskowitzGaming"
 ENTRY = str(ROOT / "gaming_hud" / "__main__.py")
 ICON_PATH = str(ROOT / "gaming_hud" / "icon.ico")
 
@@ -58,7 +58,7 @@ def generate_icon():
             p.setPen(QColor("#00d4ff"))
             font = QFont("Segoe UI", max(6, size // 5), QFont.Bold)
             p.setFont(font)
-            p.drawText(pm.rect(), Qt.AlignCenter, "HUD")
+            p.drawText(pm.rect(), Qt.AlignCenter, "MG")
             p.end()
             pixmaps.append(pm)
 

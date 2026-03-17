@@ -35,11 +35,11 @@ def _create_tray_icon_pixmap() -> QPixmap:
     p.setPen(QColor("#00d4ff"))
     p.drawRoundedRect(2, 2, 60, 60, 12, 12)
 
-    # "HUD" text
+    # "MG" text (Moskowitz Gaming)
     p.setPen(QColor("#00d4ff"))
-    font = QFont("Segoe UI", 15, QFont.Bold)
+    font = QFont("Segoe UI", 17, QFont.Bold)
     p.setFont(font)
-    p.drawText(pm.rect(), Qt.AlignCenter, "HUD")
+    p.drawText(pm.rect(), Qt.AlignCenter, "MG")
 
     p.end()
     return pm
@@ -88,15 +88,15 @@ def main():
         }
     """)
 
-    toggle_action = QAction("Hide HUD", menu)
+    toggle_action = QAction("Hide Overlay", menu)
 
     def _toggle_hud():
         if overlay.isVisible():
             overlay.hide()
-            toggle_action.setText("Show HUD")
+            toggle_action.setText("Show Overlay")
         else:
             overlay.show()
-            toggle_action.setText("Hide HUD")
+            toggle_action.setText("Hide Overlay")
 
     toggle_action.triggered.connect(_toggle_hud)
     menu.addAction(toggle_action)
