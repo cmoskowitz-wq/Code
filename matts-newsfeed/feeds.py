@@ -343,14 +343,14 @@ DEFAULT_SOURCES = [
 
 
 def seed_sources():
-    """Clear old sources and insert current cannabis sources."""
+    """
+    Ensure the sources table exactly matches DEFAULT_SOURCES.
+    Wipes and re-seeds whenever the row count differs — handles both
+    fresh installs and migrations from the old kratom source list.
+    """
     conn = get_connection()
-    # Check if we're already seeded with cannabis sources
-    existing = conn.execute(
-        "SELECT COUNT(*) FROM sources WHERE name LIKE '%Cannabis%' OR name LIKE '%Marijuana%' OR name LIKE '%marijuana%'"
-    ).fetchone()[0]
-    if existing == 0:
-        # Remove any old kratom sources and insert cannabis ones
+    count = conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
+    if count != len(DEFAULT_SOURCES):
         conn.execute("DELETE FROM sources")
         for s in DEFAULT_SOURCES:
             conn.execute(
@@ -358,7 +358,7 @@ def seed_sources():
                 (s["name"], s["url"], s["source_type"]),
             )
         conn.commit()
-        log.info(f"Seeded {len(DEFAULT_SOURCES)} cannabis news sources.")
+        log.info(f"(Re)seeded {len(DEFAULT_SOURCES)} cannabis news sources.")
     conn.close()
 
 
