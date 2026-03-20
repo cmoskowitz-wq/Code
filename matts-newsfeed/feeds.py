@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 import threading
 import logging
 
-from database import get_connection, upsert_article, init_db
+from database import get_connection, upsert_article, init_db, normalize_date, delete_old_articles
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -345,9 +345,13 @@ DEFAULT_SOURCES = [
 def seed_sources():
     """
     Ensure the sources table exactly matches DEFAULT_SOURCES.
-    Wipes and re-seeds whenever the row count differs — handles both
-    fresh installs and migrations from the old kratom source list.
+    Wipes and re-seeds whenever the count doesn't match — handles fresh
+    installs and migrations from the old kratom source list.
+    Also purges articles older than 90 days on every startup.
     """
+    # Purge stale articles every startup so only recent news is shown
+    delete_old_articles(days=90)
+
     conn = get_connection()
     count = conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
     if count != len(DEFAULT_SOURCES):
@@ -385,7 +389,7 @@ def parse_rss(xml_text: str, source_name: str, category: str = "general") -> Lis
             "source": source_name,
             "author": _text(item, "author") or _text(item, "{http://purl.org/dc/elements/1.1/}creator") or "",
             "summary": _clean_html(_text(item, "description") or ""),
-            "published": _text(item, "pubDate") or "",
+            "published": normalize_date(_text(item, "pubDate") or ""),
             "category": category,
         })
 
@@ -402,7 +406,7 @@ def parse_rss(xml_text: str, source_name: str, category: str = "general") -> Lis
             "source": source_name,
             "author": _text(entry, "{http://www.w3.org/2005/Atom}author/{http://www.w3.org/2005/Atom}name") or "",
             "summary": _clean_html(_text(entry, "{http://www.w3.org/2005/Atom}summary") or _text(entry, "{http://www.w3.org/2005/Atom}content") or ""),
-            "published": _text(entry, "{http://www.w3.org/2005/Atom}updated") or "",
+            "published": normalize_date(_text(entry, "{http://www.w3.org/2005/Atom}updated") or ""),
             "category": category,
         })
 
