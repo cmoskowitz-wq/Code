@@ -33,10 +33,9 @@ if PLATFORM == "darwin":
     extra_args = [
         # Bundle Tcl/Tk properly on macOS (avoids blank-window issues)
         "--collect-all", "tkinter",
-        # Build a universal binary that runs natively on both Intel and
-        # Apple Silicon Macs.  Remove this line if your Python is not a
-        # universal2 build (python.org installers are; Homebrew's are not).
-        "--target-arch", "universal2",
+        # Build for the native architecture of this Python interpreter.
+        # (universal2 requires a fat-binary Python, e.g. from python.org;
+        #  Homebrew Python is arm64-only so we let PyInstaller use the default.)
     ]
 elif PLATFORM == "win32":
     output_desc = f"dist\\{APP_NAME}.exe"
