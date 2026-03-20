@@ -1,5 +1,5 @@
 """
-app.py — Matt's Newsfeed
+app.py — Chris's Cannabis Counter
 Desktop GUI for browsing cannabis/marijuana/weed news.
 Two sections:
   - NJ Cannabis   : New Jersey state-level news
@@ -14,11 +14,12 @@ from datetime import datetime
 
 from database import init_db, get_articles, toggle_saved, mark_read, get_article_count, get_sources, delete_old_articles
 from feeds import seed_sources, fetch_all_threaded
+from logo import get_ctk_logo, make_cannabis_logo
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-WINDOW_TITLE = "Matt's Cannabis Newsfeed"
+WINDOW_TITLE = "Chris's Cannabis Counter"
 WINDOW_SIZE = "1200x800"
 
 
@@ -122,13 +123,30 @@ class App(ctk.CTk):
         self._start_fetch()
 
     def _build_ui(self):
+        # ── Set window icon ───────────────────────────────────────────────
+        try:
+            from PIL import ImageTk
+            icon_pil = make_cannabis_logo(32)
+            icon_photo = ImageTk.PhotoImage(icon_pil)
+            self.iconphoto(True, icon_photo)
+            self._icon_ref = icon_photo  # keep reference so GC doesn't collect it
+        except Exception:
+            pass  # non-fatal if icon fails
+
         # ── Top bar ──────────────────────────────────────────────────────
-        top = ctk.CTkFrame(self, height=50)
+        top = ctk.CTkFrame(self, height=70)
         top.pack(fill="x", padx=10, pady=(10, 0))
         top.pack_propagate(False)
 
+        # Cannabis leaf logo
+        try:
+            logo_img = get_ctk_logo(size=54)
+            ctk.CTkLabel(top, image=logo_img, text="").pack(side="left", padx=(10, 6))
+        except Exception:
+            pass  # non-fatal
+
         ctk.CTkLabel(top, text=WINDOW_TITLE,
-                     font=ctk.CTkFont(size=18, weight="bold")).pack(side="left", padx=10)
+                     font=ctk.CTkFont(size=20, weight="bold")).pack(side="left", padx=(0, 10))
 
         self.stats_label = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=12))
         self.stats_label.pack(side="left", padx=20)
