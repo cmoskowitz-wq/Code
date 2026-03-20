@@ -1,5 +1,5 @@
 """
-build.py — Build Matt's Newsfeed into a standalone .exe
+build.py — Build Chris's Cannabis Counter into a standalone .exe
 Run: python build.py
 """
 
@@ -11,7 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 PyInstaller.__main__.run([
     os.path.join(HERE, "app.py"),
-    "--name", "MattsNewsfeed",
+    "--name", "ChrisCannabisCounter",
     "--onefile",
     "--windowed",
     "--noconfirm",
@@ -21,6 +21,9 @@ PyInstaller.__main__.run([
     "--hidden-import", "requests",
     "--hidden-import", "bs4",
     "--hidden-import", "PIL",
+    "--hidden-import", "PIL.ImageTk",
+    "--hidden-import", "PIL.ImageDraw",
+    "--hidden-import", "logo",
     # Collect customtkinter data files (themes, etc.)
     "--collect-data", "customtkinter",
     # Exclude modules not needed by this app
@@ -33,4 +36,4 @@ PyInstaller.__main__.run([
 ])
 
 print("\n=== Build complete! ===")
-print(f"Executable: {os.path.join(HERE, 'dist', 'MattsNewsfeed.exe')}")
+print(f"Executable: {os.path.join(HERE, 'dist', 'ChrisCannabisCounter.exe')}")
