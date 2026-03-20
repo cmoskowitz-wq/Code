@@ -7,6 +7,7 @@ Two categories:
 """
 
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Optional
 import requests
@@ -475,45 +476,63 @@ def fetch_scrape(url: str, source_name: str, category: str = "general") -> List[
     return articles
 
 
+_db_lock = threading.Lock()
+
+
 def fetch_all_sources(progress_callback=None):
-    """Fetch all enabled sources and upsert articles into DB. Returns count of new articles."""
+    """
+    Fetch all enabled sources in parallel and upsert articles into DB.
+    Returns count of new articles.
+
+    Network I/O is done concurrently across MAX_WORKERS threads.
+    DB writes are serialised with _db_lock (SQLite WAL still requires
+    a single writer at a time).
+    """
+    MAX_WORKERS = 15
+
     conn = get_connection()
     sources = conn.execute("SELECT * FROM sources WHERE enabled = 1").fetchall()
     conn.close()
 
-    new_count = 0
     total = len(sources)
-
-    # Build URL -> category lookup from DEFAULT_SOURCES
+    new_count = 0
+    completed = 0
     url_to_category = {ds["url"]: ds.get("category", "general") for ds in DEFAULT_SOURCES}
 
-    for i, src in enumerate(sources):
-        name = src["name"]
-        url = src["url"]
+    def fetch_one(src):
+        """Fetch a single source; returns (src, articles)."""
+        cat = url_to_category.get(src["url"], "general")
         stype = src["source_type"]
-
-        if progress_callback:
-            progress_callback(i + 1, total, name)
-
-        cat = url_to_category.get(url, "general")
-
         if stype == "rss":
-            articles = fetch_rss(url, name, cat)
+            articles = fetch_rss(src["url"], src["name"], cat)
         elif stype == "scrape":
-            articles = fetch_scrape(url, name, cat)
+            articles = fetch_scrape(src["url"], src["name"], cat)
         else:
             articles = []
+        return src, articles
 
-        for a in articles:
-            if upsert_article(**a):
-                new_count += 1
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(fetch_one, src): src for src in sources}
 
-        # Update last_fetched
-        c = get_connection()
-        c.execute("UPDATE sources SET last_fetched = ? WHERE id = ?",
-                  (datetime.utcnow().isoformat(), src["id"]))
-        c.commit()
-        c.close()
+        for future in as_completed(futures):
+            src, articles = future.result()
+            completed += 1
+
+            if progress_callback:
+                progress_callback(completed, total, src["name"])
+
+            # Serialise all DB writes
+            with _db_lock:
+                for a in articles:
+                    if upsert_article(**a):
+                        new_count += 1
+                c = get_connection()
+                c.execute(
+                    "UPDATE sources SET last_fetched = ? WHERE id = ?",
+                    (datetime.utcnow().isoformat(), src["id"]),
+                )
+                c.commit()
+                c.close()
 
     return new_count
 
