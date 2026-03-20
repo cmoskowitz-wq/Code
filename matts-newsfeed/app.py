@@ -210,6 +210,8 @@ class App(ctk.CTk):
 
     # ── Article rendering ─────────────────────────────────────────────────
 
+    BATCH_SIZE = 25   # cards rendered per event-loop tick
+
     def _refresh_articles(self):
         base = dict(
             saved_only=self._saved_only,
@@ -217,28 +219,49 @@ class App(ctk.CTk):
             limit=500,
         )
 
-        nj_articles = get_articles(category="nj", **base)
-        nat_articles = get_articles(category="national", **base)
+        nj_articles  = get_articles(category="nj",       **base)
+        nat_articles = get_articles(category="national",  **base)
 
-        self._render_tab(self.nj_scroll, nj_articles)
-        self._render_tab(self.nat_scroll, nat_articles)
-
-        self.nj_count_label.configure(text=f"{len(nj_articles)} articles")
+        self.nj_count_label.configure( text=f"{len(nj_articles)} articles")
         self.nat_count_label.configure(text=f"{len(nat_articles)} articles")
 
-    def _render_tab(self, frame: ctk.CTkScrollableFrame, articles: list):
-        for w in frame.winfo_children():
+        self._clear_frame(self.nj_scroll)
+        self._clear_frame(self.nat_scroll)
+
+        if not nj_articles:
+            self._empty_label(self.nj_scroll)
+        else:
+            self.after(0, lambda: self._render_batch(self.nj_scroll, nj_articles, 0))
+
+        if not nat_articles:
+            self._empty_label(self.nat_scroll)
+        else:
+            self.after(0, lambda: self._render_batch(self.nat_scroll, nat_articles, 0))
+
+    def _clear_frame(self, frame: ctk.CTkScrollableFrame):
+        """Destroy all child widgets without blocking the event loop."""
+        children = frame.winfo_children()
+        for w in children:
             w.destroy()
-        if not articles:
-            ctk.CTkLabel(
-                frame,
-                text="No articles found. Click 'Refresh Feeds' to fetch new articles.",
-                font=ctk.CTkFont(size=14), text_color="gray",
-            ).pack(pady=40)
-            return
-        for art in articles:
+
+    def _empty_label(self, frame: ctk.CTkScrollableFrame):
+        ctk.CTkLabel(
+            frame,
+            text="No articles found. Click 'Refresh Feeds' to fetch new articles.",
+            font=ctk.CTkFont(size=14), text_color="gray",
+        ).pack(pady=40)
+
+    def _render_batch(self, frame: ctk.CTkScrollableFrame, articles: list, start: int):
+        """
+        Render one batch of BATCH_SIZE cards, then schedule the next batch
+        via self.after() so the event loop stays responsive between batches.
+        """
+        end = min(start + self.BATCH_SIZE, len(articles))
+        for art in articles[start:end]:
             card = ArticleCard(frame, art, on_save_toggle=self._update_stats)
             card.pack(fill="x", pady=3)
+        if end < len(articles):
+            self.after(5, lambda: self._render_batch(frame, articles, end))
 
     # ── Stats ─────────────────────────────────────────────────────────────
 
