@@ -11,6 +11,14 @@ from typing import List, Optional
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "matts_newsfeed.db")
 
+# NJ geography keywords used to filter NJ Cannabis tab
+_NJ_KEYWORDS_SQL = (
+    "source LIKE '%NJ%' OR source LIKE '%New Jersey%' OR source LIKE '%NJSpotlight%' "
+    "OR title LIKE '%New Jersey%' OR title LIKE '%N.J.%' "
+    "OR title LIKE '% NJ %' OR title LIKE 'NJ %' OR title LIKE '% NJ,' OR title LIKE '% NJ.' "
+    "OR summary LIKE '%New Jersey%' OR summary LIKE '% NJ %'"
+)
+
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -20,7 +28,7 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db():
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist, then run column migrations."""
     conn = get_connection()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS articles (
@@ -32,10 +40,12 @@ def init_db():
             summary TEXT DEFAULT '',
             image_url TEXT DEFAULT '',
             published TEXT DEFAULT '',
+            published_parsed TEXT DEFAULT '',
             fetched_at TEXT NOT NULL,
             is_saved INTEGER DEFAULT 0,
             is_read INTEGER DEFAULT 0,
-            category TEXT DEFAULT 'general'
+            category TEXT DEFAULT 'general',
+            tab TEXT DEFAULT 'kratom'
         );
 
         CREATE TABLE IF NOT EXISTS sources (
@@ -44,30 +54,68 @@ def init_db():
             url TEXT UNIQUE NOT NULL,
             source_type TEXT NOT NULL,
             enabled INTEGER DEFAULT 1,
-            last_fetched TEXT DEFAULT ''
+            last_fetched TEXT DEFAULT '',
+            tab TEXT DEFAULT 'kratom'
         );
 
         CREATE INDEX IF NOT EXISTS idx_articles_saved ON articles(is_saved);
-        CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published DESC);
+        CREATE INDEX IF NOT EXISTS idx_articles_published_parsed ON articles(published_parsed DESC);
         CREATE INDEX IF NOT EXISTS idx_articles_source ON articles(source);
         CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
+        CREATE INDEX IF NOT EXISTS idx_articles_tab ON articles(tab);
     """)
+    conn.commit()
+
+    # Safe migrations for existing DBs (columns added in newer versions)
+    _migrate(conn)
+    conn.close()
+
+
+def _migrate(conn: sqlite3.Connection):
+    """Add new columns if they don't exist — safe to run on every startup."""
+    migrations = [
+        "ALTER TABLE articles ADD COLUMN published_parsed TEXT DEFAULT ''",
+        "ALTER TABLE articles ADD COLUMN tab TEXT DEFAULT 'kratom'",
+        "ALTER TABLE sources ADD COLUMN tab TEXT DEFAULT 'kratom'",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass  # column already exists
+    conn.commit()
+
+
+def purge_old_articles(days: int = 90):
+    """Delete unsaved articles older than N days. Called on startup."""
+    conn = get_connection()
+    conn.execute("""
+        DELETE FROM articles
+        WHERE is_saved = 0
+          AND (
+            (published_parsed != '' AND published_parsed < datetime('now', ?))
+            OR (published_parsed = '' AND fetched_at < datetime('now', ?))
+          )
+    """, (f"-{days} days", f"-{days} days"))
     conn.commit()
     conn.close()
 
 
 def upsert_article(title: str, url: str, source: str, author: str = "",
                    summary: str = "", image_url: str = "", published: str = "",
-                   category: str = "general") -> bool:
+                   published_parsed: str = "", category: str = "general",
+                   tab: str = "kratom") -> bool:
     """Insert or ignore an article. Returns True if new."""
     conn = get_connection()
     try:
         conn.execute("""
             INSERT OR IGNORE INTO articles
-                (title, url, source, author, summary, image_url, published, fetched_at, category)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (title, url, source, author, summary, image_url, published,
-              datetime.utcnow().isoformat(), category))
+                (title, url, source, author, summary, image_url,
+                 published, published_parsed, fetched_at, category, tab)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, url, source, author, summary, image_url,
+              published, published_parsed,
+              datetime.utcnow().isoformat(), category, tab))
         conn.commit()
         return conn.total_changes > 0
     finally:
@@ -76,8 +124,9 @@ def upsert_article(title: str, url: str, source: str, author: str = "",
 
 def get_articles(saved_only: bool = False, source: Optional[str] = None,
                  category: Optional[str] = None, search: Optional[str] = None,
-                 limit: int = 200) -> List[dict]:
-    """Fetch articles with optional filters."""
+                 tab: Optional[str] = None, nj_filter: bool = False,
+                 limit: int = 300) -> List[dict]:
+    """Fetch articles with optional filters, newest first."""
     conn = get_connection()
     query = "SELECT * FROM articles WHERE 1=1"
     params: list = []
@@ -90,11 +139,21 @@ def get_articles(saved_only: bool = False, source: Optional[str] = None,
     if category:
         query += " AND category = ?"
         params.append(category)
+    if tab:
+        query += " AND tab = ?"
+        params.append(tab)
+    if nj_filter:
+        query += f" AND ({_NJ_KEYWORDS_SQL})"
     if search:
         query += " AND (title LIKE ? OR summary LIKE ?)"
         params.extend([f"%{search}%", f"%{search}%"])
 
-    query += " ORDER BY published DESC, fetched_at DESC LIMIT ?"
+    # Sort: newest published first; articles with no parsed date fall to bottom
+    query += """
+        ORDER BY
+            CASE WHEN published_parsed != '' THEN published_parsed ELSE fetched_at END DESC
+        LIMIT ?
+    """
     params.append(limit)
 
     rows = conn.execute(query, params).fetchall()
@@ -136,13 +195,6 @@ def get_article_count() -> dict:
     return {"total": total, "saved": saved, "unread": unread}
 
 
-def delete_old_articles(days: int = 30):
-    """Purge unsaved articles older than N days."""
-    conn = get_connection()
-    conn.execute("""
-        DELETE FROM articles
-        WHERE is_saved = 0
-          AND fetched_at < datetime('now', ?)
-    """, (f"-{days} days",))
-    conn.commit()
-    conn.close()
+# Keep old name for any lingering references
+def delete_old_articles(days: int = 90):
+    purge_old_articles(days)
