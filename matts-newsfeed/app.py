@@ -1,6 +1,10 @@
 """
 app.py — Matt's Newsfeed
-Desktop GUI for browsing kratom news from multiple sources.
+Desktop GUI for browsing cannabis/marijuana/weed news.
+Two sections:
+  - NJ Cannabis   : New Jersey state-level news
+  - National      : Federal / US-wide news
+Articles are sorted by date, latest first.
 """
 
 import customtkinter as ctk
@@ -14,8 +18,8 @@ from feeds import seed_sources, fetch_all_threaded
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-WINDOW_TITLE = "Matt's Kratom Newsfeed"
-WINDOW_SIZE = "1100x750"
+WINDOW_TITLE = "Matt's Cannabis Newsfeed"
+WINDOW_SIZE = "1200x800"
 
 
 class ArticleCard(ctk.CTkFrame):
@@ -46,8 +50,7 @@ class ArticleCard(ctk.CTkFrame):
         # Meta line
         source = article.get("source", "")
         published = article.get("published", "")[:25]
-        category = article.get("category", "general")
-        meta_text = f"{source}  |  {category}  |  {published}"
+        meta_text = f"{source}  |  {published}" if published else source
         meta = ctk.CTkLabel(text_frame, text=meta_text, anchor="w",
                             font=ctk.CTkFont(size=11), text_color="gray")
         meta.pack(fill="x", pady=(2, 0))
@@ -56,8 +59,8 @@ class ArticleCard(ctk.CTkFrame):
         summary = article.get("summary", "")
         if summary:
             summary_label = ctk.CTkLabel(
-                text_frame, text=summary[:200] + ("..." if len(summary) > 200 else ""),
-                anchor="w", wraplength=700, justify="left",
+                text_frame, text=summary[:220] + ("..." if len(summary) > 220 else ""),
+                anchor="w", wraplength=750, justify="left",
                 font=ctk.CTkFont(size=12),
             )
             summary_label.pack(fill="x", pady=(4, 0))
@@ -99,17 +102,15 @@ class App(ctk.CTk):
         super().__init__()
         self.title(WINDOW_TITLE)
         self.geometry(WINDOW_SIZE)
-        self.minsize(800, 500)
+        self.minsize(900, 550)
 
         # State
-        self._current_filter_source = None
-        self._current_filter_category = None
         self._saved_only = False
         self._search_query = ""
 
         self._build_ui()
 
-        # Init DB and seed
+        # Init DB and seed cannabis sources
         init_db()
         seed_sources()
 
@@ -121,78 +122,107 @@ class App(ctk.CTk):
         self._start_fetch()
 
     def _build_ui(self):
-        # Top bar
+        # ── Top bar ──────────────────────────────────────────────────────
         top = ctk.CTkFrame(self, height=50)
         top.pack(fill="x", padx=10, pady=(10, 0))
         top.pack_propagate(False)
 
-        ctk.CTkLabel(top, text=WINDOW_TITLE, font=ctk.CTkFont(size=18, weight="bold")).pack(side="left", padx=10)
+        ctk.CTkLabel(top, text=WINDOW_TITLE,
+                     font=ctk.CTkFont(size=18, weight="bold")).pack(side="left", padx=10)
 
         self.stats_label = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=12))
         self.stats_label.pack(side="left", padx=20)
 
-        self.fetch_btn = ctk.CTkButton(top, text="Refresh Feeds", width=120, command=self._start_fetch)
+        self.fetch_btn = ctk.CTkButton(top, text="Refresh Feeds", width=130,
+                                       command=self._start_fetch)
         self.fetch_btn.pack(side="right", padx=5)
 
-        self.progress_label = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=11), text_color="gray")
+        self.progress_label = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=11),
+                                           text_color="gray")
         self.progress_label.pack(side="right", padx=10)
 
-        # Filter bar
+        # ── Filter bar ───────────────────────────────────────────────────
         filt = ctk.CTkFrame(self, height=40)
         filt.pack(fill="x", padx=10, pady=(5, 0))
         filt.pack_propagate(False)
 
-        self.search_entry = ctk.CTkEntry(filt, placeholder_text="Search articles...", width=250)
+        self.search_entry = ctk.CTkEntry(filt, placeholder_text="Search articles...", width=280)
         self.search_entry.pack(side="left", padx=5)
         self.search_entry.bind("<Return>", lambda e: self._apply_search())
 
-        ctk.CTkButton(filt, text="Search", width=70, command=self._apply_search).pack(side="left", padx=2)
-        ctk.CTkButton(filt, text="Clear", width=60, fg_color="gray", command=self._clear_search).pack(side="left", padx=2)
-
-        # Category filter
-        self.category_var = ctk.StringVar(value="All Categories")
-        categories = ["All Categories", "news", "advocacy", "science", "regulation", "community", "general"]
-        cat_menu = ctk.CTkOptionMenu(filt, variable=self.category_var, values=categories, command=self._on_category_change, width=150)
-        cat_menu.pack(side="left", padx=10)
+        ctk.CTkButton(filt, text="Search", width=70,
+                      command=self._apply_search).pack(side="left", padx=2)
+        ctk.CTkButton(filt, text="Clear", width=60, fg_color="gray",
+                      command=self._clear_search).pack(side="left", padx=2)
 
         # Saved toggle
         self.saved_var = ctk.BooleanVar(value=False)
-        saved_cb = ctk.CTkCheckBox(filt, text="Saved only", variable=self.saved_var, command=self._on_saved_toggle)
-        saved_cb.pack(side="left", padx=10)
+        ctk.CTkCheckBox(filt, text="Saved only", variable=self.saved_var,
+                        command=self._on_saved_toggle).pack(side="left", padx=15)
 
         # Purge button
-        ctk.CTkButton(filt, text="Purge Old", width=90, fg_color="#8b0000", hover_color="#a52a2a",
-                       command=self._purge_old).pack(side="right", padx=5)
+        ctk.CTkButton(filt, text="Purge Old (30d)", width=110,
+                      fg_color="#8b0000", hover_color="#a52a2a",
+                      command=self._purge_old).pack(side="right", padx=5)
 
-        # Scrollable article list
-        self.scroll_frame = ctk.CTkScrollableFrame(self)
-        self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        # ── Two-tab feed view ────────────────────────────────────────────
+        self.tabview = ctk.CTkTabview(self, anchor="nw")
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=(8, 10))
+
+        self.tabview.add("🌿  NJ Cannabis")
+        self.tabview.add("🇺🇸  National")
+
+        self.nj_count_label = ctk.CTkLabel(
+            self.tabview.tab("🌿  NJ Cannabis"), text="",
+            font=ctk.CTkFont(size=11), text_color="gray"
+        )
+        self.nj_count_label.pack(anchor="e", padx=10, pady=(4, 0))
+
+        self.nj_scroll = ctk.CTkScrollableFrame(self.tabview.tab("🌿  NJ Cannabis"))
+        self.nj_scroll.pack(fill="both", expand=True)
+
+        self.nat_count_label = ctk.CTkLabel(
+            self.tabview.tab("🇺🇸  National"), text="",
+            font=ctk.CTkFont(size=11), text_color="gray"
+        )
+        self.nat_count_label.pack(anchor="e", padx=10, pady=(4, 0))
+
+        self.nat_scroll = ctk.CTkScrollableFrame(self.tabview.tab("🇺🇸  National"))
+        self.nat_scroll.pack(fill="both", expand=True)
+
+    # ── Article rendering ─────────────────────────────────────────────────
 
     def _refresh_articles(self):
-        # Clear current cards
-        for w in self.scroll_frame.winfo_children():
-            w.destroy()
-
-        cat = self._current_filter_category
-        if cat == "All Categories":
-            cat = None
-
-        articles = get_articles(
+        base = dict(
             saved_only=self._saved_only,
-            source=self._current_filter_source,
-            category=cat,
             search=self._search_query or None,
-            limit=300,
+            limit=500,
         )
 
-        if not articles:
-            ctk.CTkLabel(self.scroll_frame, text="No articles found. Click 'Refresh Feeds' to fetch new articles.",
-                         font=ctk.CTkFont(size=14), text_color="gray").pack(pady=40)
-            return
+        nj_articles = get_articles(category="nj", **base)
+        nat_articles = get_articles(category="national", **base)
 
+        self._render_tab(self.nj_scroll, nj_articles)
+        self._render_tab(self.nat_scroll, nat_articles)
+
+        self.nj_count_label.configure(text=f"{len(nj_articles)} articles")
+        self.nat_count_label.configure(text=f"{len(nat_articles)} articles")
+
+    def _render_tab(self, frame: ctk.CTkScrollableFrame, articles: list):
+        for w in frame.winfo_children():
+            w.destroy()
+        if not articles:
+            ctk.CTkLabel(
+                frame,
+                text="No articles found. Click 'Refresh Feeds' to fetch new articles.",
+                font=ctk.CTkFont(size=14), text_color="gray",
+            ).pack(pady=40)
+            return
         for art in articles:
-            card = ArticleCard(self.scroll_frame, art, on_save_toggle=self._update_stats)
+            card = ArticleCard(frame, art, on_save_toggle=self._update_stats)
             card.pack(fill="x", pady=3)
+
+    # ── Stats ─────────────────────────────────────────────────────────────
 
     def _update_stats(self):
         counts = get_article_count()
@@ -200,12 +230,16 @@ class App(ctk.CTk):
             text=f"Total: {counts['total']}  |  Saved: {counts['saved']}  |  Unread: {counts['unread']}"
         )
 
+    # ── Fetch ─────────────────────────────────────────────────────────────
+
     def _start_fetch(self):
         self.fetch_btn.configure(state="disabled", text="Fetching...")
         self.progress_label.configure(text="Starting...")
 
         def on_progress(current, total, name):
-            self.after(0, lambda: self.progress_label.configure(text=f"[{current}/{total}] {name}"))
+            self.after(0, lambda: self.progress_label.configure(
+                text=f"[{current}/{total}] {name[:50]}"
+            ))
 
         def on_done(new_count):
             def _update():
@@ -217,6 +251,8 @@ class App(ctk.CTk):
 
         fetch_all_threaded(progress_callback=on_progress, done_callback=on_done)
 
+    # ── Filter callbacks ──────────────────────────────────────────────────
+
     def _apply_search(self):
         self._search_query = self.search_entry.get().strip()
         self._refresh_articles()
@@ -224,10 +260,6 @@ class App(ctk.CTk):
     def _clear_search(self):
         self.search_entry.delete(0, "end")
         self._search_query = ""
-        self._refresh_articles()
-
-    def _on_category_change(self, value):
-        self._current_filter_category = value if value != "All Categories" else None
         self._refresh_articles()
 
     def _on_saved_toggle(self):
