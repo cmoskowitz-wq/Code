@@ -26,16 +26,28 @@ actor AIPatternDetector {
     private func loadModel() -> MLModel? {
         guard !modelLoadAttempted else { return cachedModel }
         modelLoadAttempted = true
-        for (name, ext) in [("AIGCDetector", "mlpackage"), ("AIGCDetector", "mlmodelc")] {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                let cfg = MLModelConfiguration()
-                cfg.computeUnits = .cpuAndNeuralEngine
-                if let model = try? MLModel(contentsOf: url, configuration: cfg) {
-                    cachedModel = model
-                    return model
-                }
+
+        let cfg = MLModelConfiguration()
+        cfg.computeUnits = .cpuAndNeuralEngine
+
+        // 1. Pre-compiled or mlpackage (Xcode build / mlprogram conversion)
+        for (name, ext) in [("AIGCDetector", "mlmodelc"), ("AIGCDetector", "mlpackage")] {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext),
+               let model = try? MLModel(contentsOf: url, configuration: cfg) {
+                cachedModel = model
+                return model
             }
         }
+
+        // 2. Raw .mlmodel (neuralnetwork format from swift build .copy resource)
+        //    Must be compiled at runtime before it can be loaded.
+        if let url = Bundle.main.url(forResource: "AIGCDetector", withExtension: "mlmodel"),
+           let compiledURL = try? MLModel.compileModel(at: url),
+           let model = try? MLModel(contentsOf: compiledURL, configuration: cfg) {
+            cachedModel = model
+            return model
+        }
+
         return nil
     }
 

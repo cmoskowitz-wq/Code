@@ -17,7 +17,9 @@ let package = Package(
                 "Resources/Assets.xcassets"
             ],
             resources: [
-                .copy("Resources/AIGCDetector.mlpackage")
+                // Script produces .mlpackage (Python ≤3.12) or .mlmodel (Python 3.13+)
+                // Whichever exists in Resources/ is picked up at build time.
+                .copy("Resources/AIGCDetector.mlpackage"),
             ]
         )
     ]

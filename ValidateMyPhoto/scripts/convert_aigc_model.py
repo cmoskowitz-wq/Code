@@ -21,7 +21,7 @@ from pathlib import Path
 OUT_PATH = (
     Path(__file__).parent.parent
     / "ValidateMyPhoto" / "Resources"
-    / "AIGCDetector.mlpackage"
+    / "AIGCDetector.mlmodel"   # neuralnetwork format — single file, any Python version
 )
 IMG_SIZE = 224
 IS_MACOS = platform.system() == "Darwin"
@@ -87,7 +87,10 @@ class TimmWrapper(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# 3. Convert to Core ML  (.mlpackage — works with Xcode 14+ / macOS 13+)
+# 3. Convert to Core ML  (.mlmodel / neuralnetwork format)
+#    Uses "neuralnetwork" rather than "mlprogram" to avoid the BlobWriter
+#    crash present in coremltools on Python 3.13+.  The neuralnetwork format
+#    is fully supported on macOS 13+ and produces a single portable file.
 # ---------------------------------------------------------------------------
 
 def convert(model: nn.Module, out_path: Path, label: str):
@@ -97,28 +100,47 @@ def convert(model: nn.Module, out_path: Path, label: str):
     with torch.no_grad():
         traced = torch.jit.trace(model, example)
 
-    print("Converting to Core ML (mlprogram / macOS 13+) ...")
-    mlmodel = ct.convert(
-        traced,
-        inputs=[
-            ct.ImageType(
-                name="image",
-                shape=(1, 3, IMG_SIZE, IMG_SIZE),
-                # Bake in ImageNet normalisation: pixel → (pixel/255 - mean) / std
-                scale=1.0 / 255.0,
-                bias=[
-                    -0.485 / 0.229,   # R
-                    -0.456 / 0.224,   # G
-                    -0.406 / 0.225,   # B
-                ],
-                color_layout=ct.colorlayout.RGB,
-                channel_first=True,
-            )
+    IMAGE_INPUT = ct.ImageType(
+        name="image",
+        shape=(1, 3, IMG_SIZE, IMG_SIZE),
+        # Bake in ImageNet normalisation: pixel → (pixel/255 - mean) / std
+        scale=1.0 / 255.0,
+        bias=[
+            -0.485 / 0.229,   # R
+            -0.456 / 0.224,   # G
+            -0.406 / 0.225,   # B
         ],
-        outputs=[ct.TensorType(name="aiScore")],
-        minimum_deployment_target=ct.target.macOS13,
-        convert_to="mlprogram",
+        color_layout=ct.colorlayout.RGB,
+        channel_first=True,
     )
+
+    # mlprogram (.mlpackage) is preferred — requires Python ≤3.12 due to a
+    # BlobWriter bug in coremltools on Python 3.13+.  neuralnetwork (.mlmodel)
+    # is the fallback; it requires deployment target ≤ macOS11 but runs fine
+    # on macOS 13+ (the target is a minimum-requirement, not a ceiling).
+    mlmodel = None
+    for fmt, target, suffix in [
+        ("mlprogram",    ct.target.macOS13, ".mlpackage"),
+        ("neuralnetwork", ct.target.macOS11, ".mlmodel"),
+    ]:
+        try:
+            print(f"Converting to Core ML ({fmt}) ...")
+            mlmodel = ct.convert(
+                traced,
+                inputs=[IMAGE_INPUT],
+                outputs=[ct.TensorType(name="aiScore")],
+                minimum_deployment_target=target,
+                convert_to=fmt,
+            )
+            out_path = out_path.with_suffix(suffix)
+            break
+        except RuntimeError as e:
+            if "BlobWriter" in str(e):
+                print(f"  {fmt} unavailable ({e}), trying next format ...")
+            else:
+                raise
+    if mlmodel is None:
+        raise RuntimeError("All conversion formats failed.")
 
     mlmodel.short_description = (
         "Binary AI-generated image detector. "
@@ -128,11 +150,14 @@ def convert(model: nn.Module, out_path: Path, label: str):
     mlmodel.author  = "ValidateMyPhoto"
     mlmodel.version = "1.0"
 
+    import shutil
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    # Remove stale output if present
-    if out_path.exists():
-        import shutil
-        shutil.rmtree(str(out_path))
+    # Remove any stale outputs from previous runs
+    for ext in (".mlpackage", ".mlmodel"):
+        p = out_path.with_suffix(ext)
+        if p.exists():
+            shutil.rmtree(str(p)) if p.is_dir() else p.unlink()
+
     mlmodel.save(str(out_path))
 
     if out_path.is_dir():
@@ -140,7 +165,18 @@ def convert(model: nn.Module, out_path: Path, label: str):
     else:
         size_mb = out_path.stat().st_size / 1_048_576
     print(f"Saved → {out_path}  ({size_mb:.1f} MB)")
-    return mlmodel
+
+    # If the output is .mlmodel, patch Package.swift so swift build picks it up.
+    pkg_swift = out_path.parent.parent.parent / "Package.swift"
+    if out_path.suffix == ".mlmodel" and pkg_swift.exists():
+        text = pkg_swift.read_text()
+        if "AIGCDetector.mlpackage" in text:
+            pkg_swift.write_text(
+                text.replace("AIGCDetector.mlpackage", "AIGCDetector.mlmodel")
+            )
+            print(f"Updated Package.swift → resource changed to AIGCDetector.mlmodel")
+
+    return mlmodel, out_path
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +241,12 @@ if __name__ == "__main__":
             print(f"timm random failed: {e}")
             sys.exit(1)
 
-    mlmodel = convert(wrapper, OUT_PATH, label)
+    mlmodel, saved_path = convert(wrapper, OUT_PATH, label)
     smoke_test(mlmodel, label)
 
     print()
     print("Next steps:")
-    print(f"  1. In Xcode, drag {OUT_PATH.name} into the file navigator")
+    print(f"  1. In Xcode, drag {saved_path.name} into the file navigator")
     print(f"     (ensure 'Copy items if needed' is checked,")
     print(f"      target membership: ValidateMyPhoto).")
     print(f"  2. The Swift class 'AIGCDetector' is auto-generated by Xcode.")
