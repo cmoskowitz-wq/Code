@@ -93,8 +93,6 @@ actor FrequencyAnalyzer {
     private func computeRowFFT(row: [Float]) -> [Float] {
         let n = row.count
         guard n > 0, (n & (n - 1)) == 0 else { return [] }
-        let log2n = vDSP_Length(log2(Float(n)))
-
         guard let setup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(n), .FORWARD) else { return [] }
         defer { vDSP_DFT_DestroySetup(setup) }
 

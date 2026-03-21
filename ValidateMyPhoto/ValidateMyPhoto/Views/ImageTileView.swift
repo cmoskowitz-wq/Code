@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ImageTileView: View {
     @ObservedObject var item: ImageItem
+    @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) var colorScheme
     @State private var isHovered = false
 
@@ -140,8 +141,7 @@ struct ImageTileView: View {
                 Spacer()
                 Button {
                     withAnimation(.spring(response: 0.2)) {
-                        // Notify parent
-                        NotificationCenter.default.post(name: .removeImageItem, object: item.id)
+                        appState.removeItem(item)
                     }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -174,6 +174,3 @@ struct ImageTileView: View {
     }
 }
 
-extension Notification.Name {
-    static let removeImageItem = Notification.Name("removeImageItem")
-}

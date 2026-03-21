@@ -170,12 +170,9 @@ struct DetailView: View {
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
                         .overlay(alignment: .bottom) {
-                            if selectedTab == tab {
-                                Rectangle()
-                                    .fill(Color.accentTeal)
-                                    .frame(height: 2)
-                                    .matchedGeometryEffect(id: "tab", in: Namespace().wrappedValue)
-                            }
+                            Rectangle()
+                                .fill(selectedTab == tab ? Color.accentTeal : Color.clear)
+                                .frame(height: 2)
                         }
                 }
                 .buttonStyle(.plain)

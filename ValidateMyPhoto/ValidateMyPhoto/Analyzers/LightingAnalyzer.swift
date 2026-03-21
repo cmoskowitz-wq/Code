@@ -74,11 +74,11 @@ actor LightingAnalyzer {
             }
         }
 
-        let avgLum = zip(quadrantLum, quadrantCount).map { count > 0 ? $0.0 / Double($0.1) : 0 }
+        let avgLum = (0..<4).map { quadrantCount[$0] > 0 ? quadrantLum[$0] / Double(quadrantCount[$0]) : 0.0 }
 
         // Natural lighting creates smooth gradients; AI may create inconsistent quadrant brightness
-        let maxDiff = zip(avgLum, avgLum).flatMap { _ in
-            avgLum.flatMap { a in avgLum.map { b in abs(a - b) } }
+        let maxDiff = (0..<avgLum.count).flatMap { i in
+            (i..<avgLum.count).map { j in abs(avgLum[i] - avgLum[j]) }
         }.max() ?? 0
 
         var findings: [String] = []
