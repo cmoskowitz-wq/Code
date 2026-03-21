@@ -51,6 +51,7 @@ struct ImageTileView: View {
             if let thumb = item.thumbnail {
                 Image(nsImage: thumb)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

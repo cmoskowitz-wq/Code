@@ -48,6 +48,7 @@ struct DetailView: View {
             if let thumb = item.thumbnail {
                 Image(nsImage: thumb)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(20)
@@ -74,6 +75,7 @@ struct DetailView: View {
                             if let thumb = navItem.thumbnail {
                                 Image(nsImage: thumb)
                                     .resizable()
+                                    .interpolation(.high)
                                     .aspectRatio(contentMode: .fill)
                             } else {
                                 Rectangle().fill(Color.secondary.opacity(0.2))

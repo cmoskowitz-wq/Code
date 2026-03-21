@@ -23,7 +23,7 @@ actor MetadataAnalyzer {
     ]
 
     func analyze(imageSource: CGImageSource) async -> AnalyzerResult {
-        var score = 50.0   // neutral baseline
+        var score = 60.0   // authentic-leaning baseline; real cameras push this well above 75
         var insights: [String] = []
         var confidence = 0.7
 
@@ -52,7 +52,7 @@ actor MetadataAnalyzer {
             score += 8
             insights.append("Partial camera information found.")
         } else {
-            score -= 15
+            score -= 12
             insights.append("No camera make/model — missing in most authentic photos.")
         }
 

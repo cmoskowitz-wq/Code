@@ -86,9 +86,10 @@ class ImageItem: ObservableObject, Identifiable {
         let cgThumb: CGImage? = await Task.detached(priority: .utility) {
             guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
             let opts: [CFString: Any] = [
-                kCGImageSourceThumbnailMaxPixelSize: 300,
+                kCGImageSourceThumbnailMaxPixelSize: 1200,   // 4× for Retina
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true
             ]
             return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
         }.value

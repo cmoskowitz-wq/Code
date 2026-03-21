@@ -11,7 +11,7 @@ import CoreImage
 actor FrequencyAnalyzer {
 
     func analyze(cgImage: CGImage) async -> AnalyzerResult {
-        var score = 60.0
+        var score = 63.0
         var insights: [String] = []
 
         guard let grayscaleData = toGrayscaleFloat(cgImage) else {
@@ -161,13 +161,14 @@ actor FrequencyAnalyzer {
             findings.append("Frequency spectrum follows natural 1/f distribution — consistent with real photographic content.")
         }
 
-        if highRatio < 0.02 {
-            adj -= 10
+        // Threshold lowered to 0.015: compressed JPEGs legitimately have low HF energy.
+        if highRatio < 0.015 {
+            adj -= 8
             findings.append("Unusually low high-frequency energy — AI diffusion models often suppress fine-grain detail.")
         }
 
         if lowRatio < 0.4 {
-            adj -= 8
+            adj -= 6
             findings.append("Anomalous spectral energy distribution — deviates from natural photographic characteristics.")
         }
 
@@ -207,7 +208,7 @@ actor FrequencyAnalyzer {
         if ratio > 0.85 {
             adj -= 5
             findings.append("High concentration of spectral energy in low frequencies — possible AI over-smoothing.")
-        } else if ratio < 0.50 {
+        } else if ratio < 0.40 {
             adj -= 5
             findings.append("Unusually distributed spectral energy — possible synthetic texture generation.")
         }

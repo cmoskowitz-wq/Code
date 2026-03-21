@@ -14,12 +14,15 @@ actor AnalysisEngine {
     private let aiPatternDetector   = AIPatternDetector()
 
     // Sub-score weights (must sum to 1.0)
+    // Metadata is the most reliable signal (no false positives for real cameras).
+    // Pixel forensics reduced — ELA and noise variance fire on compressed JPEGs.
+    // AI pattern bumped — CoreML classifier anchors this with higher reliability.
     private let weights: [ScoreCategory: Double] = [
-        .metadata:           0.25,
-        .pixelForensics:     0.28,
-        .frequencyDomain:    0.20,
+        .metadata:            0.28,
+        .pixelForensics:      0.22,
+        .frequencyDomain:     0.18,
         .lightingConsistency: 0.12,
-        .aiPatternMatch:     0.15
+        .aiPatternMatch:      0.20
     ]
 
     func analyze(

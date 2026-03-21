@@ -10,7 +10,7 @@ import Accelerate
 actor PixelForensicsAnalyzer {
 
     func analyze(cgImage: CGImage, deepMode: Bool) async -> AnalyzerResult {
-        var score = 60.0
+        var score = 63.0
         var insights: [String] = []
         var confidence = 0.75
         var elaResult: ELAResult?
@@ -130,17 +130,23 @@ actor PixelForensicsAnalyzer {
         var findings: [String] = []
 
         // AI diffusion images often have very low noise variance (smooth) or
-        // very high uniformity (consistent noise pattern)
-        if avgVariance < 5.0 {
-            adj -= 12
+        // very high uniformity (consistent noise pattern).
+        // Thresholds are calibrated conservatively — JPEG compression naturally
+        // reduces local variance, so only flag at very low levels.
+        if avgVariance < 2.5 {
+            adj -= 10
             findings.append("Unusually low local noise variance — AI images tend to be over-smoothed.")
+        } else if avgVariance >= 2.5 && avgVariance < 5.0 {
+            adj -= 4
+            // Mild signal only; JPEG compression commonly produces this range
         } else if avgVariance > 8.0 && avgVariance < 200.0 {
             adj += 8
             findings.append("Natural noise variance consistent with camera sensor output.")
         }
 
-        if varianceOfVariances < 10.0 && avgVariance < 20.0 {
-            adj -= 8
+        // Require much tighter criteria to avoid firing on uniform-background scenes
+        if varianceOfVariances < 5.0 && avgVariance < 10.0 {
+            adj -= 6
             findings.append("Suspiciously uniform noise distribution across image blocks.")
         }
 
@@ -177,16 +183,17 @@ actor PixelForensicsAnalyzer {
         var adj = 0.0
         var findings: [String] = []
 
-        // Check for unusual channel correlation (AI images often have near-perfect channel correlation)
+        // Check for unusual channel correlation (AI images often have near-perfect channel correlation).
+        // Tighter thresholds: low-saturation and B&W photos naturally have correlated channels.
         let channelBalance = abs(rMean - gMean) + abs(gMean - bMean) + abs(rMean - bMean)
-        if channelBalance < 5.0 && rStd < 20.0 {
-            adj -= 6
+        if channelBalance < 3.0 && rStd < 15.0 {
+            adj -= 5
             findings.append("Unusually high RGB channel correlation — possible synthetic image signature.")
         }
 
-        // Very narrow histogram (AI overprocessing)
-        if rStd < 10 && gStd < 10 && bStd < 10 {
-            adj -= 8
+        // Very narrow histogram — only flag at truly extreme compression (< 6 per channel)
+        if rStd < 6 && gStd < 6 && bStd < 6 {
+            adj -= 6
             findings.append("Narrow color histogram detected — possibly over-processed or synthetic.")
         } else if rStd > 40 || gStd > 40 || bStd > 40 {
             adj += 5
@@ -230,9 +237,10 @@ actor PixelForensicsAnalyzer {
             findings.append("Unusually uniform edge sharpness detected — consistent with AI generation or over-sharpening.")
         }
 
-        // Very smooth edges = possible diffusion model blending
-        if avgEdge < 8 {
-            adj -= 6
+        // Very smooth edges = possible diffusion model blending.
+        // Raised threshold (< 4) avoids penalizing soft portraits and bokeh backgrounds.
+        if avgEdge < 4 {
+            adj -= 5
             findings.append("Edge definition is unusually soft — may indicate diffusion model smoothing.")
         }
 
@@ -307,12 +315,15 @@ actor PixelForensicsAnalyzer {
         var adj = 0.0
         var findings: [String] = []
 
-        if ela.suspicionScore > 60 {
-            adj -= 18
+        // ELA penalties are intentionally conservative: re-compressing an already-compressed
+        // JPEG at 75% reliably triggers moderate suspicion scores for authentic images.
+        // Only penalise at high suspicion; treat moderate as ambiguous.
+        if ela.suspicionScore > 65 {
+            adj -= 12
             findings.append("ELA detected high error-level inconsistencies (\(Int(ela.suspicionScore))% suspicion) — indicates possible manipulation or synthetic generation.")
-        } else if ela.suspicionScore > 35 {
-            adj -= 8
-            findings.append("ELA shows moderate error-level variation — possible local edits or compression artifacts.")
+        } else if ela.suspicionScore > 50 {
+            adj -= 4
+            findings.append("ELA shows elevated error-level variation — possible local edits or heavy re-compression.")
         } else {
             adj += 6
             findings.append("ELA error levels are consistent and uniform — expected for authentic photographs.")
@@ -358,8 +369,10 @@ actor PixelForensicsAnalyzer {
         var adj = 0.0
         var findings: [String] = []
 
-        if varOfVar < 5.0 && meanVar < 50 {
-            adj -= 10
+        // Tightened thresholds: meanVar < 30 avoids firing on legitimate low-complexity
+        // scenes (clear sky, white walls, product shots).
+        if varOfVar < 3.0 && meanVar < 30 {
+            adj -= 8
             findings.append("Texture uniformity is suspiciously consistent across image patches — common in AI-generated content.")
         } else if varOfVar > 20.0 {
             adj += 6

@@ -87,10 +87,8 @@ actor LightingAnalyzer {
         if maxDiff > 80 {
             adj -= 8
             findings.append("Significant luminance inconsistency across image quadrants (\(Int(maxDiff)) unit difference).")
-        } else if maxDiff < 15 {
-            adj -= 4  // perfectly even lighting is suspicious too
-            findings.append("Unusually uniform luminance distribution — natural scenes typically have light gradients.")
         } else {
+            // Even lighting (overcast, studio, indoor) is entirely normal — no penalty.
             adj += 5
         }
 
