@@ -1,43 +1,136 @@
 import Foundation
 import CoreImage
-import Vision
 import CoreML
+import Vision
 
 // MARK: - AI Pattern Detector
-// Detects signatures common to specific AI generative systems.
-// Currently uses heuristic signal analysis. Architecture is ready
-// to accept a trained Core ML model — see the NOTE below.
+// Combines a Core ML neural classifier (AIGCDetector.mlpackage) with
+// heuristic signal analysis and Vision-based anatomy checks.
 //
-// NOTE FOR FUTURE INTEGRATION:
-// To plug in a real Core ML model:
-//   1. Add your .mlmodel to the Xcode project
-//   2. Replace the `heuristicAnalysis` call in `analyze()` with
-//      a `coreMLAnalysis(cgImage:)` call using the compiled model.
-//   Recommended: convert a HuggingFace AIGCDetect or Grounding DINO
-//   model using coremltools for best accuracy.
+// Score weights when the model is available:
+//   CoreML neural classifier : 45 %
+//   Heuristic signal analysis : 35 %
+//   Anatomy consistency check : 20 %
+//
+// When the model is absent the weights fall back to:
+//   Heuristic signal analysis : 65 %
+//   Anatomy consistency check : 35 %
 
 actor AIPatternDetector {
+
+    // MARK: - Model (actor-isolated singleton load)
+
+    private var cachedModel: MLModel?
+    private var modelLoadAttempted = false
+
+    private func loadModel() -> MLModel? {
+        guard !modelLoadAttempted else { return cachedModel }
+        modelLoadAttempted = true
+        for (name, ext) in [("AIGCDetector", "mlpackage"), ("AIGCDetector", "mlmodelc")] {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                let cfg = MLModelConfiguration()
+                cfg.computeUnits = .cpuAndNeuralEngine
+                if let model = try? MLModel(contentsOf: url, configuration: cfg) {
+                    cachedModel = model
+                    return model
+                }
+            }
+        }
+        return nil
+    }
 
     // MARK: - Public Entry Point
 
     func analyze(cgImage: CGImage, deepMode: Bool) async -> AnalyzerResult {
+        // Run heuristic and anatomy branches in parallel; CoreML is sequential
+        // (shares the actor's cached model — safe without extra concurrency).
         async let heuristicTask = heuristicAnalysis(cgImage: cgImage, deepMode: deepMode)
         async let anatomyTask   = anatomyConsistencyCheck(cgImage: cgImage)
-
+        let mlResult  = coreMLAnalysis(cgImage: cgImage)
         let heuristic = await heuristicTask
         let anatomy   = await anatomyTask
 
-        var combined = (heuristic.score + anatomy.score) / 2.0
-        let allInsights = heuristic.insights + anatomy.insights
+        let allInsights = mlResult.insights + heuristic.insights + anatomy.insights
 
-        // Weighted towards heuristic (more signals)
-        combined = heuristic.score * 0.65 + anatomy.score * 0.35
+        let combined: Double
+        let avgConf: Double
+
+        if mlResult.confidence > 0.5 {
+            // Model available — blend all three
+            combined = mlResult.score  * 0.45
+                     + heuristic.score * 0.35
+                     + anatomy.score   * 0.20
+            avgConf  = (mlResult.confidence + heuristic.confidence + anatomy.confidence) / 3.0
+        } else {
+            // No model — original weights
+            combined = heuristic.score * 0.65 + anatomy.score * 0.35
+            avgConf  = (heuristic.confidence + anatomy.confidence) / 2.0
+        }
 
         return AnalyzerResult(
             score: min(max(combined, 0), 100),
             insights: allInsights,
-            confidence: (heuristic.confidence + anatomy.confidence) / 2
+            confidence: avgConf
         )
+    }
+
+    // MARK: - Core ML Analysis
+
+    private func coreMLAnalysis(cgImage: CGImage) -> AnalyzerResult {
+        guard let model = loadModel() else {
+            return AnalyzerResult(
+                score: 60,
+                insights: ["Neural AI classifier not loaded — heuristic analysis only."],
+                confidence: 0.3
+            )
+        }
+
+        guard let buffer = cgImage.pixelBuffer(width: 224, height: 224) else {
+            return AnalyzerResult(
+                score: 60,
+                insights: ["Neural classifier: image preprocessing failed."],
+                confidence: 0.3
+            )
+        }
+
+        guard
+            let features = try? MLDictionaryFeatureProvider(dictionary: ["image": buffer]),
+            let output   = try? model.prediction(from: features),
+            let arr      = output.featureValue(for: "aiScore")?.multiArrayValue
+        else {
+            return AnalyzerResult(
+                score: 60,
+                insights: ["Neural classifier: inference failed."],
+                confidence: 0.3
+            )
+        }
+
+        // aiScore ≈ 1.0 → AI-generated; ≈ 0.0 → authentic
+        let aiProb = arr[0].doubleValue.clamped(to: 0...1)
+        let score  = (1.0 - aiProb) * 100.0
+
+        var findings: [String] = []
+        let confidence: Double
+
+        switch aiProb {
+        case 0.85...:
+            findings.append("Neural classifier: high confidence this image is AI-generated (\(Int(aiProb * 100))% AI probability).")
+            confidence = 0.88
+        case 0.65..<0.85:
+            findings.append("Neural classifier: moderate AI-generation signal detected (\(Int(aiProb * 100))% AI probability).")
+            confidence = 0.80
+        case 0.45..<0.65:
+            findings.append("Neural classifier: borderline result — cannot confidently distinguish AI from authentic (\(Int(aiProb * 100))% AI probability).")
+            confidence = 0.55
+        case 0.25..<0.45:
+            findings.append("Neural classifier: signals lean toward authentic capture (\(Int((1 - aiProb) * 100))% authentic probability).")
+            confidence = 0.78
+        default:
+            findings.append("Neural classifier: high confidence this is an authentic photograph (\(Int((1 - aiProb) * 100))% authentic probability).")
+            confidence = 0.88
+        }
+
+        return AnalyzerResult(score: score, insights: findings, confidence: confidence)
     }
 
     // MARK: - Heuristic Analysis
@@ -58,22 +151,18 @@ actor AIPatternDetector {
         }
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
 
-        // --- Over-smoothing check ---
         let smoothResult = detectOverSmoothing(pixels: rgba, width: w, height: h)
         score += smoothResult.adj
         insights.append(contentsOf: smoothResult.findings)
 
-        // --- Texture repetition (tiling patterns from upsampling) ---
         let tileResult = detectTextureTiling(pixels: rgba, width: w, height: h)
         score += tileResult.adj
         insights.append(contentsOf: tileResult.findings)
 
-        // --- Color distribution anomalies ---
         let colorResult = detectAIColorSignatures(pixels: rgba, width: w, height: h)
         score += colorResult.adj
         insights.append(contentsOf: colorResult.findings)
 
-        // --- Diffusion model halos/softening around subjects ---
         let haloResult = detectDiffusionHalos(pixels: rgba, width: w, height: h)
         score += haloResult.adj
         insights.append(contentsOf: haloResult.findings)
@@ -87,16 +176,16 @@ actor AIPatternDetector {
         return AnalyzerResult(score: min(max(score, 0), 100), insights: insights, confidence: 0.68)
     }
 
-    // MARK: - Over-Smoothing Detection
+    // MARK: - Contribution helper
 
     private struct Contribution {
         let adj: Double; let findings: [String]
         init(_ adj: Double, _ findings: [String]) { self.adj = adj; self.findings = findings }
     }
 
+    // MARK: - Over-Smoothing Detection
+
     private func detectOverSmoothing(pixels: [UInt8], width: Int, height: Int) -> Contribution {
-        // Compute local gradient magnitude variance
-        // Over-smoothed (AI) images have very low variance in gradient magnitudes
         var gradMags: [Double] = []
         let step = 4
 
@@ -136,8 +225,6 @@ actor AIPatternDetector {
     // MARK: - Texture Tiling Detection
 
     private func detectTextureTiling(pixels: [UInt8], width: Int, height: Int) -> Contribution {
-        // Compare small patches at regular intervals for suspicious similarity
-        // (upsampling artifacts from latent diffusion models)
         let patchSize = min(32, width/8, height/8)
         guard patchSize >= 4 else { return Contribution(0, []) }
 
@@ -161,7 +248,6 @@ actor AIPatternDetector {
 
         guard patches.count > 4 else { return Contribution(0, []) }
 
-        // Compare pairs for similarity
         var highSimilarityPairs = 0
         var totalPairs = 0
         for i in 0..<min(patches.count, 10) {
@@ -188,11 +274,6 @@ actor AIPatternDetector {
     // MARK: - AI Color Signatures
 
     private func detectAIColorSignatures(pixels: [UInt8], width: Int, height: Int) -> Contribution {
-        // Stable Diffusion / Midjourney often produce images with:
-        // - Very saturated, vivid colors
-        // - Specific hue clusters (painterly look)
-        // - Or conversely: desaturated, film-simulation appearance
-
         var saturationValues: [Double] = []
         let sampleStep = 8
 
@@ -216,13 +297,11 @@ actor AIPatternDetector {
         var findings: [String] = []
         var adj = 0.0
 
-        // Midjourney/SD v1.5 signatures: extreme saturation uniformity
         if avgSat > 0.75 && stdSat < 0.08 {
             adj -= 12
             findings.append("Unusually high and uniform color saturation — typical of AI art generator output (Midjourney/SD style).")
         }
 
-        // Over-desaturated with uniform distribution (some fine-tuned models)
         if avgSat < 0.08 && stdSat < 0.03 {
             adj -= 8
             findings.append("Near-monochrome with anomalously uniform saturation — possible synthetic grayscale conversion or AI model signature.")
@@ -234,9 +313,6 @@ actor AIPatternDetector {
     // MARK: - Diffusion Halos
 
     private func detectDiffusionHalos(pixels: [UInt8], width: Int, height: Int) -> Contribution {
-        // Diffusion models often create a halo/glow effect around high-contrast edges
-        // This manifests as high luminance variance in a band around edges
-
         var edgeAdjacentVariance: [Double] = []
         let step = 6
 
@@ -249,7 +325,6 @@ actor AIPatternDetector {
                 ]
                 let gradMag = neighbors.map { abs($0 - center) }.max() ?? 0
 
-                // If we're near a strong edge, check the wider neighborhood
                 if gradMag > 20 {
                     let farNeighbors = [
                         lumAt(pixels, x-4, y, width), lumAt(pixels, x+4, y, width),
@@ -257,7 +332,6 @@ actor AIPatternDetector {
                     ]
                     let nearMean = neighbors.reduce(0, +) / Double(neighbors.count)
                     let farMean  = farNeighbors.reduce(0, +) / Double(farNeighbors.count)
-                    // Halo = far region is brighter than near region around edge
                     edgeAdjacentVariance.append(farMean - nearMean)
                 }
             }
@@ -284,11 +358,9 @@ actor AIPatternDetector {
     // MARK: - Deep Pattern Scan (Deep Mode Only)
 
     private func deepPatternScan(pixels: [UInt8], width: Int, height: Int) -> Contribution {
-        // Additional deep-mode checks: checkerboard artifacts (GAN), border inconsistencies
         var findings: [String] = []
         var adj = 0.0
 
-        // Checkerboard detection: common in some GAN architectures (deconv artifacts)
         var checkerboardScore = 0.0
         let checkStep = 2
         var count = 0
@@ -299,7 +371,6 @@ actor AIPatternDetector {
                 let l01 = lumAt(pixels, x+checkStep, y, width)
                 let l10 = lumAt(pixels, x, y+checkStep, width)
                 let l11 = lumAt(pixels, x+checkStep, y+checkStep, width)
-                // Perfect checkerboard: alternating high/low
                 let pattern = (l00 - l01) * (l11 - l10)
                 if pattern > 100 { checkerboardScore += 1 }
                 count += 1
@@ -319,7 +390,6 @@ actor AIPatternDetector {
 
     private func anatomyConsistencyCheck(cgImage: CGImage) async -> AnalyzerResult {
         return await withCheckedContinuation { continuation in
-            var requests: [VNRequest] = []
             var faceCount = 0
             var anomalyInsights: [String] = []
             var adj = 0.0
@@ -332,14 +402,12 @@ actor AIPatternDetector {
                 for face in obs {
                     guard let landmarks = face.landmarks else { continue }
 
-                    // Check eye symmetry
                     if let leftEye = landmarks.leftEye, let rightEye = landmarks.rightEye {
                         let leftPts  = leftEye.normalizedPoints
                         let rightPts = rightEye.normalizedPoints
                         if !leftPts.isEmpty && !rightPts.isEmpty {
                             let leftCentroid  = self.centroid(leftPts)
                             let rightCentroid = self.centroid(rightPts)
-                            // Eyes should be at roughly the same Y level
                             let yDiff = abs(leftCentroid.y - rightCentroid.y)
                             if yDiff > 0.08 {
                                 adj -= 10
@@ -348,7 +416,6 @@ actor AIPatternDetector {
                         }
                     }
 
-                    // Check if face landmarks are plausible (teeth/mouth)
                     if let innerLips = landmarks.innerLips {
                         let pts = innerLips.normalizedPoints
                         if pts.count >= 4 {
@@ -362,10 +429,8 @@ actor AIPatternDetector {
                 }
             }
 
-            requests.append(faceRequest)
-
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            try? handler.perform(requests)
+            try? handler.perform([faceRequest])
 
             var score = 65.0 + adj
             var insights = anomalyInsights
@@ -421,5 +486,47 @@ actor AIPatternDetector {
         let mean = values.reduce(0, +) / Double(values.count)
         let variance = values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count)
         return sqrt(variance)
+    }
+}
+
+// MARK: - CGImage → CVPixelBuffer
+
+private extension CGImage {
+    /// Resize and convert to a 32-ARGB CVPixelBuffer for CoreML input.
+    func pixelBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey:         true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+        ]
+        var buffer: CVPixelBuffer?
+        guard CVPixelBufferCreate(
+            kCFAllocatorDefault, width, height,
+            kCVPixelFormatType_32ARGB,
+            attrs as CFDictionary, &buffer
+        ) == kCVReturnSuccess, let pb = buffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(pb, [])
+        defer { CVPixelBufferUnlockBaseAddress(pb, []) }
+
+        guard let ctx = CGContext(
+            data:             CVPixelBufferGetBaseAddress(pb),
+            width:            width,
+            height:           height,
+            bitsPerComponent: 8,
+            bytesPerRow:      CVPixelBufferGetBytesPerRow(pb),
+            space:            CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo:       CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else { return nil }
+
+        ctx.draw(self, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return pb
+    }
+}
+
+// MARK: - Comparable clamping
+
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }

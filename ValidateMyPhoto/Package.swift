@@ -15,6 +15,9 @@ let package = Package(
                 "Resources/Info.plist",
                 "Resources/ValidateMyPhoto.entitlements",
                 "Resources/Assets.xcassets"
+            ],
+            resources: [
+                .copy("Resources/AIGCDetector.mlpackage")
             ]
         )
     ]
