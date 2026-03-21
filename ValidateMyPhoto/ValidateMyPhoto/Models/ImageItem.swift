@@ -83,17 +83,18 @@ class ImageItem: ObservableObject, Identifiable {
 
     private func loadThumbnail() async {
         let url = self.url
-        let image = await Task.detached(priority: .utility) {
-            guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return NSImage?.none }
+        let cgThumb: CGImage? = await Task.detached(priority: .utility) {
+            guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
             let opts: [CFString: Any] = [
                 kCGImageSourceThumbnailMaxPixelSize: 300,
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true
             ]
-            guard let cgThumb = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return NSImage?.none }
-            return NSImage(cgImage: cgThumb, size: .zero)
+            return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
         }.value
-        self.thumbnail = image
+        if let cg = cgThumb {
+            self.thumbnail = NSImage(cgImage: cg, size: .zero)
+        }
     }
 
     static func isSupported(url: URL) -> Bool {

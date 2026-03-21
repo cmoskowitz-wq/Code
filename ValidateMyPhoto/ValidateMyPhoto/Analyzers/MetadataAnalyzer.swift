@@ -110,7 +110,7 @@ actor MetadataAnalyzer {
 
         // --- Software Signature ---
         let software = (tiff?[kCGImagePropertyTIFFSoftware as String] as? String ?? "").lowercased()
-        let xmpData  = props["ProfileName"] as? String ?? ""  // rough XMP check
+
 
         if !software.isEmpty {
             let isAI = aiSoftwarePatterns.contains { software.contains($0) }

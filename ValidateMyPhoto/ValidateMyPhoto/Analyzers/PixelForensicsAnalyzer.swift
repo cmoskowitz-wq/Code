@@ -250,7 +250,7 @@ actor PixelForensicsAnalyzer {
         // ELA compresses image at known quality and compares to original.
         // Authentic photos show uniform error levels; manipulated/generated
         // images show inconsistent error concentrations.
-        guard let ciImage = CIImage(cgImage: cgImage) else { return nil }
+        let ciImage = CIImage(cgImage: cgImage)
 
         let context = CIContext()
 
@@ -329,7 +329,7 @@ actor PixelForensicsAnalyzer {
         let patchH = max(height / 8, 16)
         var patchVariances: [Double] = []
 
-        for i in 0..<patches {
+        for _ in 0..<patches {
             let px = Int.random(in: 0..<max(1, width  - patchW))
             let py = Int.random(in: 0..<max(1, height - patchH))
             var lumVals: [Double] = []

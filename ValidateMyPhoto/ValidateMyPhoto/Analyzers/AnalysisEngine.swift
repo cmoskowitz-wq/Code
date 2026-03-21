@@ -29,9 +29,9 @@ actor AnalysisEngine {
     ) async throws -> AnalysisResult {
 
         let start = Date()
-        let url = await item.url
-        let fileName = await item.fileName
-        let fileSize = await item.fileSize
+        let url = item.url
+        let fileName = item.fileName
+        let fileSize = item.fileSize
 
         guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             throw AnalysisError.unreadableImage

@@ -89,7 +89,10 @@ actor AIPatternDetector {
 
     // MARK: - Over-Smoothing Detection
 
-    private struct Contribution { let adj: Double; let findings: [String] }
+    private struct Contribution {
+        let adj: Double; let findings: [String]
+        init(_ adj: Double, _ findings: [String]) { self.adj = adj; self.findings = findings }
+    }
 
     private func detectOverSmoothing(pixels: [UInt8], width: Int, height: Int) -> Contribution {
         // Compute local gradient magnitude variance
@@ -334,8 +337,8 @@ actor AIPatternDetector {
                         let leftPts  = leftEye.normalizedPoints
                         let rightPts = rightEye.normalizedPoints
                         if !leftPts.isEmpty && !rightPts.isEmpty {
-                            let leftCentroid  = centroid(leftPts)
-                            let rightCentroid = centroid(rightPts)
+                            let leftCentroid  = self.centroid(leftPts)
+                            let rightCentroid = self.centroid(rightPts)
                             // Eyes should be at roughly the same Y level
                             let yDiff = abs(leftCentroid.y - rightCentroid.y)
                             if yDiff > 0.08 {
