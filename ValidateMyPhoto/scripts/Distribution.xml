@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+
+    <title>Validate My Photo</title>
+    <organization>com.moskophotolabs</organization>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <options customize="never" require-scripts="false" rootVolumeOnly="true" hostArchitectures="arm64 x86_64"/>
+
+    <!-- Welcome / Background -->
+    <background file="background.png" alignment="bottomleft" scaling="tofit"/>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="license.html" mime-type="text/html"/>
+
+    <!-- Choices outline (single required component) -->
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.moskophotolabs.ValidateMyPhoto"/>
+        </line>
+    </choices-outline>
+
+    <choice id="default"/>
+    <choice id="com.moskophotolabs.ValidateMyPhoto"
+            visible="false"
+            title="Validate My Photo"
+            description="AI image authenticity detection application.">
+        <pkg-ref id="com.moskophotolabs.ValidateMyPhoto"/>
+    </choice>
+
+    <pkg-ref id="com.moskophotolabs.ValidateMyPhoto"
+             version="1.0.0"
+             onConclusion="none">ValidateMyPhoto.pkg</pkg-ref>
+
+</installer-gui-script>
