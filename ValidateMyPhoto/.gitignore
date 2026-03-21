@@ -1,0 +1,42 @@
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/
+DerivedData/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# Build artifacts
+build/
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+*.dmg
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Credentials / secrets
+.env
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+ExportOptions.plist.local
+
+# Editor
+.idea/
+*.swp

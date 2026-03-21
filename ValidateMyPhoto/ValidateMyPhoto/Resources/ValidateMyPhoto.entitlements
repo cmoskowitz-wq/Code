@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox enabled — required for Mac App Store and recommended for distribution -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- User-selected files (read-only) — for NSOpenPanel and drag & drop -->
+    <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+
+    <!-- Downloads folder write access — for exporting PDF/CSV reports -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+
+    <!-- Hardened Runtime: required for notarization -->
+    <!-- No JIT, no unsigned executable memory, no DYLD env vars -->
+</dict>
+</plist>
