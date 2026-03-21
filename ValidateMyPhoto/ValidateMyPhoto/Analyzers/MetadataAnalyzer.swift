@@ -119,7 +119,7 @@ actor MetadataAnalyzer {
             if isAI {
                 score -= 40
                 confidence = min(confidence + 0.2, 1.0)
-                insights.append("AI generative software signature detected in metadata: "\(software)".")
+                insights.append("AI generative software signature detected in metadata: \"\(software)\".")
             } else if isEditor {
                 score -= 5
                 insights.append("Image processed with editing software: \(formatSoftwareName(software)).")
@@ -142,7 +142,7 @@ actor MetadataAnalyzer {
         if let copyright = iptc?[kCGImagePropertyIPTCCopyrightNotice as String] as? String,
            !copyright.isEmpty {
             score += 3
-            insights.append("Copyright notice found: "\(copyright)".")
+            insights.append("Copyright notice found: \"\(copyright)\".")
         }
 
         // --- Color Profile ---
