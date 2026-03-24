@@ -100,14 +100,20 @@ def run_pyinstaller(nltk_paths: list[Path]) -> Path:
     for np in nltk_paths:
         add_data += ["--add-data", f"{np}{SEP}nltk_data"]
 
+    # ── Exclude competing Qt bindings ─────────────────────────────────────
+    # PyInstaller aborts if more than one Qt binding is collected.
+    # We use PyQt6 exclusively, so strip out PyQt5 and PySide6/2.
+    exclude: list[str] = []
+    for pkg in ("PyQt5", "PySide2", "PySide6"):
+        exclude += ["--exclude-module", pkg]
+
     # ── Hidden imports ─────────────────────────────────────────────────────
     # These are discovered at runtime via string lookups and PyInstaller
     # won't find them through static analysis alone.
     hidden: list[str] = []
     for imp in (
-        # matplotlib Qt backend (PyQt6)
+        # matplotlib Qt backend — PyQt6 only
         "matplotlib.backends.backend_qtagg",
-        "matplotlib.backends.backend_qt5agg",
         # PyQt6 internals
         "PyQt6.sip",
         "PyQt6.QtPrintSupport",
@@ -148,6 +154,7 @@ def run_pyinstaller(nltk_paths: list[Path]) -> Path:
         "--onedir",                 # Folder bundle — fast startup, easy updates
         "--clean",                  # Remove stale cache before building
         "--noconfirm",              # Overwrite dist/ without prompting
+        *exclude,
         *collect_all,
         *hidden,
         *add_data,

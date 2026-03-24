@@ -17,10 +17,7 @@ matplotlib.use("QtAgg")
 import mplfinance as mpf
 import pandas as pd
 
-try:
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-except ImportError:
-    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas  # type: ignore
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 import matplotlib.pyplot as plt
 
