@@ -1,0 +1,71 @@
+# ============================================================
+#  TradeMe Jobs — Configuration File
+#  Edit this file to customize search terms, filters, and schedule.
+# ============================================================
+
+version: "TradeMe Jobs 1.0"
+
+# ── Job titles / keywords to search for ─────────────────────
+# Each entry is passed as a keyword search to TradeMe Jobs.
+job_titles:
+  - "CTO"
+  - "CIO"
+  - "VP Technology"
+  - "Head of IT"
+  - "Director of Technology"
+  - "Engineering Manager"
+  - "Software Engineer"
+
+# ── TradeMe API settings ─────────────────────────────────────
+# TradeMe has a free developer API — register at:
+# https://developer.trademe.co.nz/
+#
+# For unauthenticated (public) access, consumer_key and
+# consumer_secret are not required but rate limits are lower.
+trademe:
+  consumer_key: ""       # Optional: OAuth consumer key
+  consumer_secret: ""    # Optional: OAuth consumer secret
+  sandbox: false         # Set true to use tmsandbox.co.nz for testing
+
+# ── Search filters ────────────────────────────────────────────
+search:
+  hours_ago: 24          # Only return jobs posted within this many hours
+  region: 0              # 0 = all NZ; see regions below
+  job_type: 0            # 0=all, 1=fulltime, 2=parttime, 3=contract, 4=casual
+  results_per_search: 50 # Results per keyword search (max 500)
+  #
+  # Region codes:
+  #   0  = All New Zealand
+  #   1  = Northland
+  #   2  = Auckland
+  #   3  = Waikato
+  #   4  = Bay of Plenty
+  #   5  = Gisborne
+  #   6  = Hawke's Bay
+  #   7  = Taranaki
+  #   8  = Manawatu / Whanganui
+  #   9  = Wellington
+  #   12 = Nelson / Tasman
+  #   13 = Marlborough
+  #   14 = West Coast
+  #   15 = Canterbury
+  #   16 = Otago
+  #   17 = Southland
+  #   18 = Tasman
+  #   19 = Nelson
+  #   20 = Central Otago / Lakes District
+
+# ── Email settings ────────────────────────────────────────────
+email:
+  recipient: "cmoskowitz@gmail.com"
+  sender: ""             # Your sending address, e.g. you@gmail.com
+  sender_name: "TradeMe Jobs Bot"
+
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  use_tls: true
+  password: ""           # Gmail App Password or SMTP password
+
+  schedule: "daily"
+  daily_time: "08:00"    # 24-hour time (HH:MM)
+  timezone: "Pacific/Auckland"
