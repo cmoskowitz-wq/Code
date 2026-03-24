@@ -5,13 +5,12 @@ Manage watchlist, API keys, refresh settings, and alert preferences.
 from typing import List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QIntValidator
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMessageBox,
-    QPushButton, QScrollArea, QSizePolicy,
-    QSlider, QSpacerItem, QSpinBox, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from app.config import MAX_STOCKS, REFRESH_OPTIONS, DEFAULT_REFRESH_INTERVAL
@@ -410,8 +409,6 @@ class ConfigScreen(QWidget):
             self._db.set_setting(k, v)
         self.settings_changed.emit()
 
-        msg = QLabel("Indicator settings saved ✓")
-        msg.setStyleSheet("color: #3fb950;")
         QMessageBox.information(self, "Saved", "Indicator settings have been saved.")
 
     def _save_alert_settings(self):

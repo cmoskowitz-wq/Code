@@ -41,9 +41,10 @@ class SparklineWidget(pg.PlotWidget):
             ax.setPen(pg.mkPen(color="#21262d", width=1))
 
         self._curve = self.plot(pen=pg.mkPen(color="#58a6ff", width=1.5))
+        self._baseline = self.plot(pen=pg.mkPen(None))   # persistent, invisible
         self._fill = pg.FillBetweenItem(
             self._curve,
-            self.plot(pen=pg.mkPen(None)),
+            self._baseline,
             brush=pg.mkBrush(QColor(88, 166, 255, 25)),
         )
         self.addItem(self._fill)
@@ -54,11 +55,10 @@ class SparklineWidget(pg.PlotWidget):
         colour = COLOR_BUY if positive else COLOR_SELL
         self._curve.setPen(pg.mkPen(color=colour, width=1.5))
         fill_color = QColor(63, 185, 80, 25) if positive else QColor(248, 81, 73, 25)
-        self._fill.setBrushes(pg.mkBrush(fill_color), pg.mkBrush(None))
+        self._fill.setBrush(pg.mkBrush(fill_color))
         x = list(range(len(prices)))
         self._curve.setData(x, prices)
-        baseline = self.plot(x, [min(prices)] * len(prices), pen=pg.mkPen(None))
-        self._fill.setCurves(self._curve, baseline)
+        self._baseline.setData(x, [min(prices)] * len(prices))
 
 
 class StockCard(QFrame):

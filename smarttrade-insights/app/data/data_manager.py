@@ -159,7 +159,6 @@ class DataManager(QObject):
             df = self._yf.get_historical(ticker, period=period, interval=interval)
 
         if df is not None and not df.empty:
-            provider = self._yf if df is not None else self._av
             records = self._yf.df_to_records(ticker, df)
             self.db.upsert_price_data(ticker, records, interval=interval)
         return df
