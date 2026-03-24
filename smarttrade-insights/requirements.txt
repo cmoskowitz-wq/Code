@@ -1,0 +1,23 @@
+# SmartTrade Insights - Python dependencies
+# Install with: pip install -r requirements.txt
+
+# ── UI ────────────────────────────────────────────────────────────────────────
+PyQt6>=6.5.0
+pyqtgraph>=0.13.3
+
+# ── Market data ───────────────────────────────────────────────────────────────
+yfinance>=0.2.36
+requests>=2.31.0
+
+# ── Data processing ───────────────────────────────────────────────────────────
+pandas>=2.0.0
+numpy>=1.24.0
+
+# ── Security (API key storage) ────────────────────────────────────────────────
+keyring>=24.0.0
+
+# ── Desktop notifications (optional but recommended) ──────────────────────────
+plyer>=2.1.0
+
+# ── Build (development / CI only) ────────────────────────────────────────────
+# pyinstaller>=6.3.0
