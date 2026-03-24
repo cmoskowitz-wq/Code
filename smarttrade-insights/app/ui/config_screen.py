@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QSlider, QSpacerItem, QSpinBox, QVBoxLayout, QWidget,
 )
 
-from app.config import MAX_STOCKS, REFRESH_OPTIONS
+from app.config import MAX_STOCKS, REFRESH_OPTIONS, DEFAULT_REFRESH_INTERVAL
 from app.data.data_manager import DataManager
 from app.database.db_manager import DatabaseManager
 from app.utils.crypto import get_api_key, store_api_key, delete_api_key
