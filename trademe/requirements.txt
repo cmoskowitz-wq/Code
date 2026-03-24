@@ -1,0 +1,7 @@
+PyQt6>=6.4.0
+yfinance>=0.2.31
+pandas>=2.0.0
+mplfinance>=0.12.10b0
+matplotlib>=3.7.0
+requests>=2.31.0
+textblob>=0.17.1
