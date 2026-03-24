@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """
 TradeMe — Build Script
-Packages the app into a standalone executable using PyInstaller.
+Packages the app into a standalone executable using PyInstaller,
+then (on Windows) wraps it in a wizard-style installer with Inno Setup.
 
 Usage (from the trademe/ directory):
     python build.py
 
-Output:
-    dist/TradeMe/TradeMe.exe       ← Windows
-    dist/TradeMe/TradeMe           ← macOS / Linux
+Output (Windows):
+    dist/TradeMe/TradeMe.exe    ← raw bundle (always produced)
+    dist/TradeMe-Setup.exe      ← installable wizard (requires Inno Setup)
 
-To distribute: zip the entire  dist/TradeMe/  folder and share it.
-Recipients just unzip and run TradeMe.exe — no Python needed.
+Output (macOS / Linux):
+    dist/TradeMe/TradeMe        ← raw bundle
+
+Install Inno Setup 6 from:  https://jrsoftware.org/isdownload.php
+If iscc.exe is not found the installer step is skipped with a warning.
 """
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -45,14 +50,14 @@ def pip(*packages: str) -> None:
 # ── Build steps ────────────────────────────────────────────────────────────────
 
 def install_build_deps() -> None:
-    step(1, 4, "Installing build dependencies…")
+    step(1, 5, "Installing build dependencies…")
     pip("pyinstaller>=6.0", "pyinstaller-hooks-contrib>=2024.0")
     print("  ✓ PyInstaller ready")
 
 
 def download_nltk_data() -> None:
     """TextBlob uses NLTK under the hood; corpora must be present before bundling."""
-    step(2, 4, "Downloading TextBlob / NLTK corpora…")
+    step(2, 5, "Downloading TextBlob / NLTK corpora…")
     try:
         import nltk  # noqa: PLC0415
         for corpus in (
@@ -72,7 +77,7 @@ def download_nltk_data() -> None:
 
 def find_nltk_paths() -> list[Path]:
     """Return all existing NLTK data directories so we can bundle them."""
-    step(3, 4, "Locating NLTK data directories…")
+    step(3, 5, "Locating NLTK data directories…")
     import nltk.data  # noqa: PLC0415
 
     found: list[Path] = []
@@ -88,7 +93,7 @@ def find_nltk_paths() -> list[Path]:
 
 
 def run_pyinstaller(nltk_paths: list[Path]) -> Path:
-    step(4, 4, "Running PyInstaller…")
+    step(4, 5, "Running PyInstaller…")
 
     # ── --add-data entries ─────────────────────────────────────────────────
     add_data: list[str] = []
@@ -168,6 +173,38 @@ def run_pyinstaller(nltk_paths: list[Path]) -> Path:
     return exe
 
 
+def run_inno_setup() -> Path | None:
+    """Compile TradeMe.iss into a wizard-style installer exe (Windows only)."""
+    step(5, 5, "Running Inno Setup…")
+
+    if sys.platform != "win32":
+        print("  · Skipping — Inno Setup is Windows-only")
+        return None
+
+    # Look for iscc.exe in common install locations
+    candidates = [
+        Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"),
+        Path(r"C:\Program Files\Inno Setup 6\ISCC.exe"),
+    ]
+    iscc = shutil.which("iscc") or shutil.which("ISCC")
+    if iscc:
+        iscc_path: Path | None = Path(iscc)
+    else:
+        iscc_path = next((p for p in candidates if p.exists()), None)
+
+    if iscc_path is None:
+        print("  WARNING: iscc.exe not found — skipping installer step.")
+        print("  Install Inno Setup 6 from: https://jrsoftware.org/isdownload.php")
+        return None
+
+    iss = HERE / "TradeMe.iss"
+    run([str(iscc_path), str(iss)])
+
+    installer = HERE / "dist" / "TradeMe-Setup.exe"
+    print(f"  ✓ Installer: {installer}")
+    return installer
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -181,24 +218,26 @@ def main() -> None:
     download_nltk_data()
     nltk_paths = find_nltk_paths()
     exe = run_pyinstaller(nltk_paths)
+    installer = run_inno_setup()
 
-    dist_folder = HERE / "dist" / "TradeMe"
     print()
     print("=" * 58)
     print("  Build complete!")
     print("=" * 58)
-    print(f"  Executable : {exe}")
-    print(f"  Folder     : {dist_folder}")
-    print()
-    print("  To share with others:")
-    print("    • Zip the entire  dist/TradeMe/  folder")
-    print("    • Recipients unzip and run TradeMe.exe")
-    print("    • No Python installation required")
+    print(f"  Bundle     : {exe}")
+    if installer and installer.exists():
+        print(f"  Installer  : {installer}")
+        print()
+        print("  Share  dist/TradeMe-Setup.exe  — recipients run it")
+        print("  to install TradeMe like any normal Windows program.")
+    else:
+        print()
+        print("  No installer produced (Inno Setup not found).")
+        print("  Fallback: zip dist/TradeMe/ and share the zip.")
     print()
     if sys.platform == "win32":
-        print("  Tip: to add an icon, place a  trademe.ico  file here")
-        print("  and add  --icon trademe.ico  to the PyInstaller command")
-        print("  in this script.")
+        print("  Tip: add a  trademe.ico  file next to build.py and set")
+        print("  AppIcon in TradeMe.iss + --icon in build.py for branding.")
     print()
 
 
