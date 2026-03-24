@@ -98,9 +98,6 @@ def run_pyinstaller(nltk_paths: list[Path]) -> Path:
     # ── --add-data entries ─────────────────────────────────────────────────
     add_data: list[str] = []
 
-    # Ship config.json alongside the exe (user's watchlist)
-    add_data += ["--add-data", f"config.json{SEP}."]
-
     # Bundle every NLTK data directory found on this machine
     for np in nltk_paths:
         add_data += ["--add-data", f"{np}{SEP}nltk_data"]

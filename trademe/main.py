@@ -35,7 +35,7 @@ from workers import MarketDataWorker, NewsWorker
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-CONFIG_FILE   = Path(__file__).parent / "config.json"
+CONFIG_FILE   = Path.home() / ".trademe" / "config.json"
 NEWS_API_KEY  = "eb76f17efb2040a7a2d7eec4652f9613"
 REFRESH_MS    = 60_000   # 1 minute
 
@@ -459,8 +459,12 @@ class TradingApp(QMainWindow):
             return list(DEFAULT_TICKERS)
 
     def _save_config(self) -> None:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(self.stocks, f, indent=2)
+        try:
+            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(self.stocks, f, indent=2)
+        except Exception as exc:
+            print(f"[config] Could not save: {exc}")
 
     # ── UI Construction ───────────────────────────────────────────────────────
 
@@ -660,7 +664,7 @@ class TradingApp(QMainWindow):
             self._insert_row(symbol)
 
     def _insert_row(self, symbol: str) -> None:
-        item   = QListWidgetItem(self._list)
+        item   = QListWidgetItem()
         widget = TickerRow(symbol)
         item.setSizeHint(widget.sizeHint())
         self._list.addItem(item)
