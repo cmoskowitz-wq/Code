@@ -226,8 +226,8 @@ class SimulationScreen(QWidget):
         self._m_trades, self._m_trades_val = _metric("TOTAL TRADES")
         self._m_sharpe, self._m_sharpe_val = _metric("SHARPE RATIO")
 
-        for frame, _ in (self._m_return, self._m_drawdown, self._m_winrate,
-                         self._m_trades, self._m_sharpe):
+        for frame in (self._m_return, self._m_drawdown, self._m_winrate,
+                      self._m_trades, self._m_sharpe):
             self._metrics_row.addWidget(frame)
 
         v.addLayout(self._metrics_row)
