@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-threatscope.py — ThreatScope V4.4
+threatscope.py — ThreatScope V4.5
 Cyber-threat dashboard: CVEs, CISA KEV flags, security news, and exploit feeds.
 
 Usage:
@@ -12,19 +12,22 @@ Requirements:
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import feedparser
 import requests
 from PyQt6.QtCore import QThread, QTimer, QUrl, Qt, pyqtSignal
 from PyQt6.QtGui import QFont
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -36,6 +39,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -63,13 +67,18 @@ RSS_FEEDS: list[str] = [
     "https://sec.cloudapps.cisco.com/security/center/rss.x?i=44",
 ]
 
-HTTP_TIMEOUT: int = 10           # seconds per request
+HTTP_TIMEOUT: int = 10           # seconds — RSS / CISA KEV requests
+NVD_TIMEOUT: int = 30           # seconds — NVD is often slow; give it more time
 AUTO_REFRESH_MS: int = 10 * 60 * 1000   # 10 minutes in milliseconds
 NVD_RESULTS_PER_PAGE: int = 2000        # NVD hard-caps at 2000
 NEWS_ENTRIES_PER_FEED: int = 8          # max articles pulled per RSS feed
 EXPLOIT_ENTRIES_MAX: int = 12           # max exploit entries to show
 SUMMARY_PREVIEW_LEN: int = 150         # chars to preview in list descriptions
 CVE_LOOKBACK_DAYS: int = 30            # how far back to fetch CVEs
+
+CACHE_DIR: Path = Path.home() / ".threatscope"
+CACHE_PATH: Path = CACHE_DIR / "cve_cache.json"
+CACHE_MAX_AGE_HOURS: int = 1           # treat cache as stale after this long
 
 APP_STYLESHEET = """
     QWidget { background-color: #0D1117; color: #C9D1D9; font-family: Segoe UI; }
@@ -128,82 +137,129 @@ def extract_products(configurations: list[dict]) -> str:
     return ", ".join(sorted(products)) or "Unknown"
 
 
+# ── Disk cache ────────────────────────────────────────────────────────────────
+
+
+def _load_cve_cache() -> list[dict] | None:
+    """Return cached CVE list if it exists and is younger than CACHE_MAX_AGE_HOURS."""
+    try:
+        if not CACHE_PATH.exists():
+            return None
+        payload = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        cached_at = datetime.fromisoformat(payload["cached_at"])
+        if datetime.now() - cached_at > timedelta(hours=CACHE_MAX_AGE_HOURS):
+            logger.debug("CVE cache is stale — will refresh.")
+            return None
+        logger.info("CVE cache hit (%d entries, age < %dh).", len(payload["cves"]), CACHE_MAX_AGE_HOURS)
+        return payload["cves"]
+    except Exception as exc:
+        logger.warning("CVE cache load failed: %s", exc)
+        return None
+
+
+def _save_cve_cache(cves: list[dict]) -> None:
+    """Persist the CVE list to disk for fast startup on next launch."""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        CACHE_PATH.write_text(
+            json.dumps({"cached_at": datetime.now().isoformat(), "cves": cves},
+                       default=str),
+            encoding="utf-8",
+        )
+        logger.debug("CVE cache saved (%d entries).", len(cves))
+    except Exception as exc:
+        logger.warning("CVE cache save failed: %s", exc)
+
+
 # ── Worker threads ────────────────────────────────────────────────────────────
 
 
 class CVEWorker(QThread):
-    """Fetches CVE data from NVD and cross-references CISA KEV in a background thread."""
+    """Fetches CVE data from NVD and cross-references CISA KEV in a background thread.
 
-    data_ready = pyqtSignal(list)
+    Emits `cache_ready` immediately when a warm disk cache is available so the
+    UI can populate instantly, then emits `data_ready` once the live fetch
+    completes.  CISA KEV and NVD are fetched in parallel to halve wait time.
+    """
+
+    cache_ready = pyqtSignal(list)   # fired instantly from disk cache (may not fire)
+    data_ready = pyqtSignal(list)    # fired when live network fetch is complete
     error = pyqtSignal(str)
 
     def run(self) -> None:
-        kev_set = self._fetch_kev()
-        cves = self._fetch_cves(kev_set)
+        # ── 1. Serve cached data immediately so the table isn't blank ──────────
+        cached = _load_cve_cache()
+        if cached:
+            self.cache_ready.emit(cached)
+
+        # ── 2. Fetch CISA KEV and NVD in parallel ─────────────────────────────
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            kev_future: Future[set[str]] = pool.submit(self._fetch_kev)
+            nvd_future: Future[list[dict] | None] = pool.submit(self._fetch_nvd_raw)
+            kev_set = kev_future.result()
+            raw_vulns = nvd_future.result()
+
+        if raw_vulns is None:
+            return  # error already emitted inside _fetch_nvd_raw
+
+        # ── 3. Process, sort, cache, emit ─────────────────────────────────────
+        cves = [self._process_vuln(v, kev_set) for v in raw_vulns]
         cves.sort(key=lambda x: x.get("date", ""), reverse=True)
+        _save_cve_cache(cves)
         self.data_ready.emit(cves)
+
+    # ── Private helpers ───────────────────────────────────────────────────────
 
     def _fetch_kev(self) -> set[str]:
         try:
             r = requests.get(CISA_KEV_URL, timeout=HTTP_TIMEOUT)
             r.raise_for_status()
-            return {
-                entry.get("cveID")
-                for entry in r.json().get("vulnerabilities", [])
-            }
+            return {entry.get("cveID") for entry in r.json().get("vulnerabilities", [])}
         except Exception as exc:
             logger.warning("CISA KEV fetch failed: %s", exc)
             return set()
 
-    def _fetch_cves(self, kev_set: set[str]) -> list[dict]:
+    def _fetch_nvd_raw(self) -> list[dict] | None:
         now_utc = datetime.now(timezone.utc)
-        start = (now_utc - timedelta(days=CVE_LOOKBACK_DAYS)).strftime(
-            "%Y-%m-%dT%H:%M:%S.000Z"
-        )
+        start = (now_utc - timedelta(days=CVE_LOOKBACK_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         end = now_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         url = (
             f"{NVD_BASE_URL}"
             f"?pubStartDate={start}&pubEndDate={end}"
             f"&resultsPerPage={NVD_RESULTS_PER_PAGE}"
         )
-
         try:
-            r = requests.get(url, timeout=HTTP_TIMEOUT)
+            r = requests.get(url, timeout=NVD_TIMEOUT)
             r.raise_for_status()
             data = r.json()
         except Exception as exc:
             logger.error("NVD CVE fetch failed: %s", exc)
             self.error.emit(f"CVE fetch failed: {exc}")
-            return []
+            return None
 
         total = data.get("totalResults", 0)
         if total > NVD_RESULTS_PER_PAGE:
             logger.warning(
-                "NVD reports %d total CVEs but only %d were fetched. "
-                "Consider pagination.",
+                "NVD reports %d total CVEs but only %d were fetched (API cap).",
                 total, NVD_RESULTS_PER_PAGE,
             )
+        return data.get("vulnerabilities", [])
 
-        items: list[dict] = []
-        for vuln in data.get("vulnerabilities", []):
-            cve = vuln.get("cve", {})
-            cve_id = cve.get("id", "Unknown")
-            desc_list = cve.get("descriptions", [{}])
-            desc = desc_list[0].get("value", "") if desc_list else ""
-            score = get_cvss_score(cve.get("metrics", {}))
-            products = extract_products(cve.get("configurations", []))
-            items.append(
-                {
-                    "cve": cve_id,
-                    "products": products,
-                    "date": cve.get("published", ""),
-                    "score": score,
-                    "exploited": cve_id in kev_set,
-                    "url": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
-                    "desc": desc,
-                }
-            )
-        return items
+    @staticmethod
+    def _process_vuln(vuln: dict, kev_set: set[str]) -> dict:
+        cve = vuln.get("cve", {})
+        cve_id = cve.get("id", "Unknown")
+        desc_list = cve.get("descriptions", [])
+        desc = desc_list[0].get("value", "") if desc_list else ""
+        return {
+            "cve": cve_id,
+            "products": extract_products(cve.get("configurations", [])),
+            "date": cve.get("published", ""),
+            "score": get_cvss_score(cve.get("metrics", {})),
+            "exploited": cve_id in kev_set,
+            "url": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
+            "desc": desc,
+        }
 
 
 class NewsWorker(QThread):
@@ -287,7 +343,7 @@ class ThreatApp(QWidget):
     # ── Window setup ──────────────────────────────────────────────────────────
 
     def _build_window(self) -> None:
-        self.setWindowTitle("ThreatScope V4.4")
+        self.setWindowTitle("ThreatScope V4.5")
         screen = QApplication.primaryScreen()
         if screen:
             geo = screen.availableGeometry()
@@ -315,7 +371,7 @@ class ThreatApp(QWidget):
 
     def _build_title_bar(self) -> QHBoxLayout:
         layout = QHBoxLayout()
-        title = QLabel("🛡 ThreatScope V4.4 — News, CVEs & Exploits")
+        title = QLabel("🛡 ThreatScope V4.5 — News, CVEs & Exploits")
         title.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
         layout.addWidget(title)
         help_btn = QPushButton("Help / About")
@@ -357,10 +413,19 @@ class ThreatApp(QWidget):
         self.cve_table = QTableWidget()
         self.cve_table.setColumnCount(3)
         self.cve_table.setHorizontalHeaderLabels(
-            ["Products", "CVE / Score / Flags", "Published"]
+            ["CVE · Score · Flags", "Affected Products", "Published"]
         )
         self.cve_table.setAlternatingRowColors(True)
+        self.cve_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.cve_table.setSortingEnabled(True)
+        self.cve_table.verticalHeader().setVisible(False)
         self.cve_table.cellClicked.connect(self._show_cve_detail)
+
+        # Column sizing: CVE col and date col hug their content; products stretches
+        header = self.cve_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
         self.cve_detail = QWebEngineView()
 
@@ -425,7 +490,8 @@ class ThreatApp(QWidget):
             return
         self._set_loading("cves", True)
         self._cve_worker = CVEWorker()
-        self._cve_worker.data_ready.connect(self._populate_cves)
+        self._cve_worker.cache_ready.connect(self._populate_cves)   # instant, from disk
+        self._cve_worker.data_ready.connect(self._populate_cves)    # fresh, from network
         self._cve_worker.error.connect(lambda msg: self._on_error("CVE", msg))
         self._cve_worker.finished.connect(self._cve_worker.deleteLater)
         self._cve_worker.finished.connect(lambda: self._set_loading("cves", False))
@@ -478,32 +544,45 @@ class ThreatApp(QWidget):
 
     def _populate_cves(self, cves: list[dict]) -> None:
         self.cve_data = cves
-        self.cve_table.setRowCount(len(cves))
-        for row, cve in enumerate(cves):
-            score = cve["score"]
-            flag = ""
-            if score >= 9.0:
-                flag = " 🔴 CRITICAL"
-            elif score >= 7.0:
-                flag = " 🟠 HIGH"
-            if cve["exploited"]:
-                flag += " ⚠️ EXPLOITED"
+        non_editable = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
 
-            products_item = QTableWidgetItem(cve["products"])
-            cve_item = QTableWidgetItem(f"{cve['cve']} ({score:.1f}){flag}")
-            cve_item.setToolTip(cve["desc"])
-            date_item = QTableWidgetItem(cve["date"])
+        # Suspend repaints for the entire bulk-insert to avoid per-row flicker
+        self.cve_table.setSortingEnabled(False)
+        self.cve_table.setUpdatesEnabled(False)
+        try:
+            self.cve_table.setRowCount(len(cves))
+            for row, cve in enumerate(cves):
+                score = cve["score"]
+                flag = ""
+                if score >= 9.0:
+                    flag = "  🔴 CRITICAL"
+                elif score >= 7.0:
+                    flag = "  🟠 HIGH"
+                if cve["exploited"]:
+                    flag += "  ⚠️ KEV"
 
-            for col, widget_item in enumerate(
-                (products_item, cve_item, date_item)
-            ):
-                widget_item.setFlags(
-                    widget_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-                )
-                self.cve_table.setItem(row, col, widget_item)
+                # Col 0 — CVE ID · score · severity flags (left, compact)
+                cve_item = QTableWidgetItem(f"{cve['cve']}  ({score:.1f}){flag}")
+                cve_item.setToolTip(cve["desc"])
+                cve_item.setFlags(non_editable)
 
-        self.cve_table.resizeColumnsToContents()
-        logger.info("%d CVEs loaded.", len(cves))
+                # Col 1 — Affected products (stretches to fill)
+                products_item = QTableWidgetItem(cve["products"])
+                products_item.setFlags(non_editable)
+
+                # Col 2 — Published date (right, compact)
+                date_str = cve["date"][:10]   # keep only YYYY-MM-DD
+                date_item = QTableWidgetItem(date_str)
+                date_item.setFlags(non_editable)
+
+                self.cve_table.setItem(row, 0, cve_item)
+                self.cve_table.setItem(row, 1, products_item)
+                self.cve_table.setItem(row, 2, date_item)
+        finally:
+            self.cve_table.setUpdatesEnabled(True)
+            self.cve_table.setSortingEnabled(True)
+
+        logger.info("%d CVEs populated.", len(cves))
 
     def _populate_exploits(self, items: list[dict]) -> None:
         self.exploit_list.clear()
@@ -542,8 +621,8 @@ class ThreatApp(QWidget):
     def _show_about(self) -> None:
         QMessageBox.information(
             self,
-            "About ThreatScope V4.4",
-            "ThreatScope V4.4\n\n"
+            "About ThreatScope V4.5",
+            "ThreatScope V4.5\n\n"
             "All Rights Reserved © 2026 Christopher Moskowitz\n"
             "Email: cmoskowitz@gmail.com\n\n"
             "Modern threat-intelligence dashboard.\n"

@@ -45,7 +45,7 @@ def _make_pyqt6_stub() -> None:
     # QtWidgets needs several widget classes
     qtwidgets = sys.modules["PyQt6.QtWidgets"]
     for attr in (
-        "QApplication", "QHBoxLayout", "QLabel", "QListWidget",
+        "QApplication", "QHBoxLayout", "QHeaderView", "QLabel", "QListWidget",
         "QListWidgetItem", "QMessageBox", "QPushButton", "QTableWidget",
         "QTableWidgetItem", "QTabWidget", "QVBoxLayout", "QWidget",
     ):
@@ -65,7 +65,14 @@ def _make_feedparser_stub() -> None:
 _make_pyqt6_stub()
 _make_feedparser_stub()
 
-from threatscope import extract_products, get_cvss_score, parse_rss_date  # noqa: E402
+from threatscope import (  # noqa: E402
+    extract_products,
+    get_cvss_score,
+    parse_rss_date,
+    _load_cve_cache,
+    _save_cve_cache,
+    CACHE_PATH,
+)
 
 
 # ── parse_rss_date ────────────────────────────────────────────────────────────
@@ -209,3 +216,54 @@ class TestExtractProducts:
         result = extract_products(configs)
         assert "nginx" in result
         assert "apache" in result
+
+
+# ── _load_cve_cache / _save_cve_cache ─────────────────────────────────────────
+
+
+class TestCveCache:
+    SAMPLE = [
+        {"cve": "CVE-2026-0001", "score": 9.8, "products": "openssl", "date": "2026-03-01",
+         "exploited": True, "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-0001",
+         "desc": "Critical buffer overflow."},
+    ]
+
+    def test_roundtrip(self, tmp_path, monkeypatch):
+        """Save then load returns identical data."""
+        monkeypatch.setattr("threatscope.CACHE_DIR", tmp_path)
+        monkeypatch.setattr("threatscope.CACHE_PATH", tmp_path / "cve_cache.json")
+        _save_cve_cache(self.SAMPLE)
+        loaded = _load_cve_cache()
+        assert loaded is not None
+        assert loaded[0]["cve"] == "CVE-2026-0001"
+        assert loaded[0]["score"] == 9.8
+
+    def test_missing_file_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("threatscope.CACHE_PATH", tmp_path / "nonexistent.json")
+        assert _load_cve_cache() is None
+
+    def test_stale_cache_returns_none(self, tmp_path, monkeypatch):
+        """Cache older than CACHE_MAX_AGE_HOURS should be treated as a miss."""
+        from datetime import timedelta
+        monkeypatch.setattr("threatscope.CACHE_DIR", tmp_path)
+        cache_file = tmp_path / "cve_cache.json"
+        monkeypatch.setattr("threatscope.CACHE_PATH", cache_file)
+        # Write a cache timestamped 2 hours ago
+        old_time = (datetime.now() - timedelta(hours=2)).isoformat()
+        cache_file.write_text(
+            __import__("json").dumps({"cached_at": old_time, "cves": self.SAMPLE}),
+            encoding="utf-8",
+        )
+        assert _load_cve_cache() is None
+
+    def test_corrupt_cache_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("threatscope.CACHE_PATH", tmp_path / "cve_cache.json")
+        (tmp_path / "cve_cache.json").write_text("not json!", encoding="utf-8")
+        assert _load_cve_cache() is None
+
+    def test_save_creates_directory(self, tmp_path, monkeypatch):
+        nested = tmp_path / "a" / "b" / "c"
+        monkeypatch.setattr("threatscope.CACHE_DIR", nested)
+        monkeypatch.setattr("threatscope.CACHE_PATH", nested / "cve_cache.json")
+        _save_cve_cache(self.SAMPLE)
+        assert (nested / "cve_cache.json").exists()
