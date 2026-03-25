@@ -43,12 +43,38 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger("threatscope")
+def _setup_logging() -> logging.Logger:
+    """Configure logging to both stderr and a persistent log file.
+
+    The log file is written to ~/.threatscope/threatscope.log and is the only
+    way to see crash output when the app is built as a --windowed exe (no console).
+    """
+    log_dir = Path.home() / ".threatscope"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "threatscope.log"
+
+    fmt = logging.Formatter(
+        "%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(fmt)
+    file_handler.setLevel(logging.DEBUG)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(fmt)
+    stream_handler.setLevel(logging.INFO)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.addHandler(file_handler)
+    root.addHandler(stream_handler)
+
+    return logging.getLogger("threatscope")
+
+
+logger = _setup_logging()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -339,7 +365,12 @@ class ThreatApp(QWidget):
         self.exploit_data: list[dict] = []
         self._loading: set[str] = set()
 
-        # Worker references (prevent garbage collection mid-run)
+        # Keeps Python references alive until each worker's finished signal fires.
+        # Without this, reassigning self._*_worker drops the refcount to zero and
+        # Python's GC can free the Python wrapper while Qt's C++ object is still
+        # alive in the event queue — causing a crash on the 10-minute auto-refresh.
+        self._active_workers: set = set()
+
         self._cve_worker: CVEWorker | None = None
         self._news_worker: NewsWorker | None = None
         self._exploit_worker: ExploitWorker | None = None
@@ -484,44 +515,49 @@ class ThreatApp(QWidget):
 
     # ── Loaders ───────────────────────────────────────────────────────────────
 
+    def _start_worker(self, worker: QThread) -> None:
+        """Register a worker so it stays alive until Qt is done with it."""
+        self._active_workers.add(worker)
+        worker.finished.connect(lambda: self._active_workers.discard(worker))
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
     def _load_news(self) -> None:
         if self._news_worker and self._news_worker.isRunning():
             logger.debug("News worker already running — skipping.")
             return
         self._set_loading("news", True)
-        self._news_worker = NewsWorker()
-        self._news_worker.data_ready.connect(self._populate_news)
-        self._news_worker.error.connect(lambda msg: self._on_error("News", msg))
-        self._news_worker.finished.connect(self._news_worker.deleteLater)
-        self._news_worker.finished.connect(lambda: self._set_loading("news", False))
-        self._news_worker.start()
+        w = NewsWorker()
+        w.data_ready.connect(self._populate_news)
+        w.error.connect(lambda msg: self._on_error("News", msg))
+        w.finished.connect(lambda: self._set_loading("news", False))
+        self._news_worker = w
+        self._start_worker(w)
 
     def _load_cves(self) -> None:
         if self._cve_worker and self._cve_worker.isRunning():
             logger.debug("CVE worker already running — skipping.")
             return
         self._set_loading("cves", True)
-        self._cve_worker = CVEWorker()
-        self._cve_worker.cache_ready.connect(self._populate_cves)   # instant, from disk
-        self._cve_worker.data_ready.connect(self._populate_cves)    # fresh, from network
-        self._cve_worker.error.connect(lambda msg: self._on_error("CVE", msg))
-        self._cve_worker.finished.connect(self._cve_worker.deleteLater)
-        self._cve_worker.finished.connect(lambda: self._set_loading("cves", False))
-        self._cve_worker.start()
+        w = CVEWorker()
+        w.cache_ready.connect(self._populate_cves)   # instant, from disk
+        w.data_ready.connect(self._populate_cves)    # fresh, from network
+        w.error.connect(lambda msg: self._on_error("CVE", msg))
+        w.finished.connect(lambda: self._set_loading("cves", False))
+        self._cve_worker = w
+        self._start_worker(w)
 
     def _load_exploits(self) -> None:
         if self._exploit_worker and self._exploit_worker.isRunning():
             logger.debug("Exploit worker already running — skipping.")
             return
         self._set_loading("exploits", True)
-        self._exploit_worker = ExploitWorker()
-        self._exploit_worker.data_ready.connect(self._populate_exploits)
-        self._exploit_worker.error.connect(lambda msg: self._on_error("Exploit", msg))
-        self._exploit_worker.finished.connect(self._exploit_worker.deleteLater)
-        self._exploit_worker.finished.connect(
-            lambda: self._set_loading("exploits", False)
-        )
-        self._exploit_worker.start()
+        w = ExploitWorker()
+        w.data_ready.connect(self._populate_exploits)
+        w.error.connect(lambda msg: self._on_error("Exploit", msg))
+        w.finished.connect(lambda: self._set_loading("exploits", False))
+        self._exploit_worker = w
+        self._start_worker(w)
 
     # ── Loading state management ──────────────────────────────────────────────
 
@@ -651,6 +687,19 @@ class ThreatApp(QWidget):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import traceback
+
+    def _excepthook(exc_type: type, exc_value: BaseException, exc_tb: Any) -> None:
+        """Log every unhandled exception to file before the app exits.
+
+        Without this, --windowed builds crash silently with no trace.
+        Check ~/.threatscope/threatscope.log to diagnose any crash.
+        """
+        msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        logger.critical("Unhandled exception — app will exit:\n%s", msg)
+
+    sys.excepthook = _excepthook
+
     # Must be set before QApplication is created.
     # Required for QtWebEngine to function correctly inside a PyInstaller bundle
     # (tells Qt to share the OpenGL context with the Chromium subprocess).
