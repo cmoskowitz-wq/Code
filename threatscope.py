@@ -80,6 +80,15 @@ CACHE_DIR: Path = Path.home() / ".threatscope"
 CACHE_PATH: Path = CACHE_DIR / "cve_cache.json"
 CACHE_MAX_AGE_HOURS: int = 1           # treat cache as stale after this long
 
+_BROWSER_PLACEHOLDER = """
+<html>
+<body style="background:#0D1117;color:#8B949E;font-family:Segoe UI;
+             display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <p style="font-size:15px;">Select an item on the left to load it here.</p>
+</body>
+</html>
+"""
+
 APP_STYLESHEET = """
     QWidget { background-color: #0D1117; color: #C9D1D9; font-family: Segoe UI; }
     QTableWidget { background-color: #161B22; alternate-background-color: #0D1117; }
@@ -393,6 +402,7 @@ class ThreatApp(QWidget):
         self.news_list = QListWidget()
         self.news_list.itemClicked.connect(self._open_news_article)
         self.news_browser = QWebEngineView()
+        self.news_browser.setHtml(_BROWSER_PLACEHOLDER)
         split.addWidget(self.news_list, 4)
         split.addWidget(self.news_browser, 6)
         layout.addLayout(split)
@@ -428,6 +438,7 @@ class ThreatApp(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
         self.cve_detail = QWebEngineView()
+        self.cve_detail.setHtml(_BROWSER_PLACEHOLDER)
 
         split = QHBoxLayout()
         split.addWidget(self.cve_table, 4)
@@ -451,6 +462,7 @@ class ThreatApp(QWidget):
         self.exploit_list = QListWidget()
         self.exploit_list.itemClicked.connect(self._open_exploit_article)
         self.exploit_browser = QWebEngineView()
+        self.exploit_browser.setHtml(_BROWSER_PLACEHOLDER)
         split.addWidget(self.exploit_list, 4)
         split.addWidget(self.exploit_browser, 6)
         layout.addLayout(split)
@@ -587,6 +599,12 @@ class ThreatApp(QWidget):
     def _populate_exploits(self, items: list[dict]) -> None:
         self.exploit_list.clear()
         self.exploit_data = items
+        if not items:
+            placeholder = QListWidgetItem("No exploit feed data — check your connection and click Refresh.")
+            placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.exploit_list.addItem(placeholder)
+            logger.warning("Exploit feed returned no items.")
+            return
         for item in items:
             lw = QListWidgetItem(f"{item['date']} | {item['title']}")
             lw.setData(Qt.ItemDataRole.UserRole, item["url"])
@@ -633,6 +651,10 @@ class ThreatApp(QWidget):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # Must be set before QApplication is created.
+    # Required for QtWebEngine to function correctly inside a PyInstaller bundle
+    # (tells Qt to share the OpenGL context with the Chromium subprocess).
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     window = ThreatApp()
     window.show()
