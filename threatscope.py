@@ -87,12 +87,17 @@ APP_STYLESHEET = """
 
 
 def parse_rss_date(date_str: str) -> datetime:
-    """Parse an RFC-2822-style RSS date string; returns datetime.min on failure."""
+    """Parse an RFC-2822-style RSS date string; returns datetime.min on failure.
+
+    Always returns a naive (timezone-stripped) datetime so mixed feeds
+    containing both aware and naive entries can be sorted together.
+    """
     if not date_str:
         return datetime.min
     for fmt in ("%a, %d %b %Y %H:%M:%S %z", "%a, %d %b %Y %H:%M:%S"):
         try:
-            return datetime.strptime(date_str[:31].strip(), fmt)
+            dt = datetime.strptime(date_str[:31].strip(), fmt)
+            return dt.replace(tzinfo=None)
         except ValueError:
             continue
     logger.debug("Unparseable date string: %r", date_str)

@@ -73,10 +73,10 @@ from threatscope import extract_products, get_cvss_score, parse_rss_date  # noqa
 
 class TestParseRssDate:
     def test_standard_rfc2822_with_timezone(self):
-        from datetime import timezone
         result = parse_rss_date("Mon, 24 Mar 2026 12:00:00 +0000")
-        # Parser returns a timezone-aware datetime when %z is present
-        assert result == datetime(2026, 3, 24, 12, 0, 0, tzinfo=timezone.utc)
+        # tzinfo is always stripped so aware and naive dates sort together
+        assert result == datetime(2026, 3, 24, 12, 0, 0)
+        assert result.tzinfo is None
 
     def test_standard_rfc2822_without_timezone(self):
         result = parse_rss_date("Mon, 24 Mar 2026 08:30:00")
