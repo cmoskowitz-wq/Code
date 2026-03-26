@@ -8,6 +8,7 @@ and latency metrics with live graphs and a status bar.
 import sys
 import logging
 import subprocess
+import os
 import psutil
 from collections import deque
 from typing import Optional
@@ -80,35 +81,65 @@ def get_ping(host: str = PING_HOST) -> Optional[float]:
 
 def get_gpu_usage() -> Optional[float]:
     """
-    Get GPU usage on macOS via powermetrics.
+    Get GPU usage on macOS via multiple methods.
 
-    Note: Requires elevated privileges (sudo). Returns None if unavailable.
+    Tries powermetrics first (requires sudo), then falls back to other methods.
 
     Returns:
         GPU busy percentage, or None if unavailable
     """
+    # Method 1: Try powermetrics with stderr redirected to stdout
     try:
-        output = subprocess.check_output(
+        output = subprocess.run(
             ["powermetrics", "--samplers", "gpu_power", "-n", "1"],
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
             universal_newlines=True,
             timeout=5
         )
-        for line in output.split("\n"):
-            if "GPU Busy" in line:
+        if output.returncode == 0:
+            for line in output.stdout.split("\n"):
+                if "GPU Busy" in line:
+                    try:
+                        return float(line.split(":")[1].strip().replace("%", ""))
+                    except (ValueError, IndexError):
+                        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    
+    # Method 2: Try ioreg (doesn't require sudo on most systems)
+    try:
+        output = subprocess.run(
+            ["ioreg", "-r", "-w", "0", "-d", "0"],
+            capture_output=True,
+            universal_newlines=True,
+            timeout=5
+        )
+        if output.returncode == 0 and "IOAccelDeviceUtilization" in output.stdout:
+            import re
+            match = re.search(r'IOAccelDeviceUtilization["\s:]*(\d+)', output.stdout)
+            if match:
                 try:
-                    return float(line.split(":")[1].strip().replace("%", ""))
+                    return float(match.group(1))
                 except (ValueError, IndexError):
-                    logger.debug(f"Failed to parse GPU metrics: {line}")
-                    return None
-    except subprocess.TimeoutExpired:
-        logger.debug("powermetrics timeout")
-    except FileNotFoundError:
-        logger.debug("powermetrics not available (requires macOS system utility)")
-    except PermissionError:
-        logger.info("GPU metrics require elevated privileges (run with sudo)")
-    except Exception as e:
-        logger.debug(f"Failed to get GPU usage: {e}")
+                    pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    
+    # Method 3: Check system_profiler for GPU info (basic, not real-time)
+    try:
+        output = subprocess.run(
+            ["system_profiler", "SPDisplaysDataType"],
+            capture_output=True,
+            universal_newlines=True,
+            timeout=5
+        )
+        if output.returncode == 0 and ("M" in output.stdout or "Apple" in output.stdout):
+            # Mac has integrated GPU or dedicated GPU
+            # Return 0.0 as placeholder since we can't get real-time usage easily
+            return 0.0
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    
     return None
 
 
@@ -180,7 +211,7 @@ class MoskoMeter(QtWidgets.QMainWindow):
         # Create graph widgets with proper Y-axis ranges
         self.cpu_plot = self._create_plot("CPU %", y_range=(0, 100))
         self.mem_plot = self._create_plot("Memory %", y_range=(0, 100))
-        self.gpu_plot = self._create_plot("GPU %", y_range=(0, 100))
+        self.load_plot = self._create_plot("System Load Avg", y_range=(0, psutil.cpu_count() * 1.5), auto_scale=True)
         self.net_plot = self._create_plot("Network KB/s", y_range=(0, 100), auto_scale=True)
         self.latency_plot = self._create_plot("Latency (ms)", y_range=(0, 100), auto_scale=True)
         self.disk_io_plot = self._create_plot("Disk I/O (MB/s)", y_range=(0, 100), auto_scale=True)
@@ -189,7 +220,7 @@ class MoskoMeter(QtWidgets.QMainWindow):
         grid = QtWidgets.QGridLayout()
         grid.addWidget(self.cpu_plot, 0, 0)
         grid.addWidget(self.mem_plot, 0, 1)
-        grid.addWidget(self.gpu_plot, 0, 2)
+        grid.addWidget(self.load_plot, 0, 2)
         grid.addWidget(self.net_plot, 1, 0)
         grid.addWidget(self.latency_plot, 1, 1)
         grid.addWidget(self.disk_io_plot, 1, 2)
@@ -300,7 +331,7 @@ class MoskoMeter(QtWidgets.QMainWindow):
         self.max_points = MAX_DATA_POINTS
         self.cpu_data: deque = deque(maxlen=self.max_points)
         self.mem_data: deque = deque(maxlen=self.max_points)
-        self.gpu_data: deque = deque(maxlen=self.max_points)
+        self.load_data: deque = deque(maxlen=self.max_points)
         self.net_data: deque = deque(maxlen=self.max_points)
         self.latency_data: deque = deque(maxlen=self.max_points)
         self.disk_read_data: deque = deque(maxlen=self.max_points)
@@ -320,17 +351,16 @@ class MoskoMeter(QtWidgets.QMainWindow):
         self.is_paused = False
         self.current_cpu = 0.0
         self.current_mem = 0.0
-        self.current_gpu = 0.0
+        self.current_load = 0.0
         self.current_net = 0.0
         self.current_latency: Optional[float] = None
         self.current_disk_read = 0.0
         self.current_disk_write = 0.0
-        self.current_npu: Optional[float] = None
 
         # Stats tracking for each metric
         self.cpu_stats = {"min": 0, "max": 100, "avg": 0}
         self.mem_stats = {"min": 0, "max": 100, "avg": 0}
-        self.gpu_stats = {"min": 0, "max": 100, "avg": 0}
+        self.load_stats = {"min": 0, "max": 100, "avg": 0}
         self.net_stats = {"min": 0, "max": 100, "avg": 0}
         self.latency_stats = {"min": 0, "max": 100, "avg": 0}
         self.disk_read_stats = {"min": 0, "max": 100, "avg": 0}
@@ -641,16 +671,11 @@ class MoskoMeter(QtWidgets.QMainWindow):
             self.mem_data.append(self.current_mem)
             self._update_metric_stats(self.mem_data, self.mem_stats)
 
-            # GPU (only add valid values)
-            gpu_value = get_gpu_usage()
-            if gpu_value is not None:
-                self.current_gpu = gpu_value
-                self.gpu_data.append(self.current_gpu)
-                self._update_metric_stats(self.gpu_data, self.gpu_stats)
-            else:
-                # If GPU data unavailable, use 0
-                self.current_gpu = 0.0
-                self.gpu_data.append(0.0)
+            # System Load Average (1-minute load average)
+            load_avg = os.getloadavg()[0]
+            self.current_load = load_avg
+            self.load_data.append(self.current_load)
+            self._update_metric_stats(self.load_data, self.load_stats)
 
             # Network (skip first update to avoid large spike)
             current_net = psutil.net_io_counters()
@@ -709,8 +734,8 @@ class MoskoMeter(QtWidgets.QMainWindow):
                 self._refresh_plot(self.cpu_plot, self.cpu_data, self.cpu_stats)
             if self.mem_data:
                 self._refresh_plot(self.mem_plot, self.mem_data, self.mem_stats)
-            if self.gpu_data:
-                self._refresh_plot(self.gpu_plot, self.gpu_data, self.gpu_stats)
+            if self.load_data:
+                self._refresh_plot(self.load_plot, self.load_data, self.load_stats)
             if self.net_data:
                 self._refresh_plot(self.net_plot, self.net_data, self.net_stats)
             if self.latency_data:
@@ -744,7 +769,7 @@ class MoskoMeter(QtWidgets.QMainWindow):
         """Update status bar and window title with current metrics."""
         cpu_str = f"CPU {self.current_cpu:.1f}%"
         mem_str = f"MEM {self.current_mem:.1f}%"
-        gpu_str = f"GPU {self.current_gpu:.1f}%"
+        load_str = f"LOAD {self.current_load:.2f}"
         net_str = f"NET {self.current_net:.1f} KB/s"
         lat_str = f"LAT {self.current_latency:.1f} ms" if self.current_latency else "LAT —"
         npu_str = f"NPU {self.current_npu:.1f}%" if self.current_npu is not None else "NPU —"
@@ -752,18 +777,18 @@ class MoskoMeter(QtWidgets.QMainWindow):
 
         # Update window title
         self.setWindowTitle(
-            f"Mosko Meter v7.0 | {cpu_str} | {mem_str} | {gpu_str} | {net_str} | {lat_str}{pause_str}"
+            f"Mosko Meter v7.0 | {cpu_str} | {mem_str} | {load_str} | {net_str} | {lat_str}{pause_str}"
         )
 
         # Update status bar with enhanced stats
         cpu_avg = f"Avg: {self.cpu_stats['avg']:.1f}%" if self.cpu_stats['avg'] > 0 else "Avg: —"
         mem_avg = f"Avg: {self.mem_stats['avg']:.1f}%" if self.mem_stats['avg'] > 0 else "Avg: —"
-        gpu_avg = f"Avg: {self.gpu_stats['avg']:.1f}%" if self.gpu_stats['avg'] > 0 else "Avg: —"
+        load_avg = f"Avg: {self.load_stats['avg']:.2f}" if self.load_stats['avg'] > 0 else "Avg: —"
         net_avg = f"Avg: {self.net_stats['avg']:.1f}" if self.net_stats['avg'] > 0 else "Avg: —"
         lat_avg = f"Avg: {self.latency_stats['avg']:.1f}" if self.latency_stats['avg'] > 0 else "Avg: —"
         
         self.status_label.setText(
-            f"  {cpu_str} ({cpu_avg})  |  {mem_str} ({mem_avg})  |  {gpu_str} ({gpu_avg})  |  {net_str} ({net_avg})  |  "
+            f"  {cpu_str} ({cpu_avg})  |  {mem_str} ({mem_avg})  |  {load_str} ({load_avg})  |  {net_str} ({net_avg})  |  "
             f"{lat_str} ({lat_avg})  |  {npu_str}  [Ctrl+Space: Pause]"
         )
 
