@@ -8,7 +8,6 @@ and latency metrics with live graphs and a status bar.
 import sys
 import logging
 import subprocess
-import os
 import psutil
 from collections import deque
 from typing import Optional
@@ -31,14 +30,6 @@ UPDATE_INTERVAL = 1000  # milliseconds
 MAX_DATA_POINTS = 60
 DARKMODE_BG = "#0d1117"
 DARKMODE_FG = "#c9d1d9"
-
-# Modern color scheme
-PRIMARY_COLOR = "#00d4ff"      # Cyan
-ACCENT_COLOR = "#ff6b6b"       # Red
-SUCCESS_COLOR = "#51cf66"       # Green
-WARNING_COLOR = "#ffd43b"       # Yellow
-SURFACE_COLOR = "#161b22"       # Darker surface
-BORDER_COLOR = "#30363d"        # Border color
 
 # ----------------------------
 # Helper Functions
@@ -81,65 +72,35 @@ def get_ping(host: str = PING_HOST) -> Optional[float]:
 
 def get_gpu_usage() -> Optional[float]:
     """
-    Get GPU usage on macOS via multiple methods.
+    Get GPU usage on macOS via powermetrics.
 
-    Tries powermetrics first (requires sudo), then falls back to other methods.
+    Note: Requires elevated privileges (sudo). Returns None if unavailable.
 
     Returns:
         GPU busy percentage, or None if unavailable
     """
-    # Method 1: Try powermetrics with stderr redirected to stdout
     try:
-        output = subprocess.run(
+        output = subprocess.check_output(
             ["powermetrics", "--samplers", "gpu_power", "-n", "1"],
-            capture_output=True,
+            stderr=subprocess.DEVNULL,
             universal_newlines=True,
             timeout=5
         )
-        if output.returncode == 0:
-            for line in output.stdout.split("\n"):
-                if "GPU Busy" in line:
-                    try:
-                        return float(line.split(":")[1].strip().replace("%", ""))
-                    except (ValueError, IndexError):
-                        pass
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        pass
-    
-    # Method 2: Try ioreg (doesn't require sudo on most systems)
-    try:
-        output = subprocess.run(
-            ["ioreg", "-r", "-w", "0", "-d", "0"],
-            capture_output=True,
-            universal_newlines=True,
-            timeout=5
-        )
-        if output.returncode == 0 and "IOAccelDeviceUtilization" in output.stdout:
-            import re
-            match = re.search(r'IOAccelDeviceUtilization["\s:]*(\d+)', output.stdout)
-            if match:
+        for line in output.split("\n"):
+            if "GPU Busy" in line:
                 try:
-                    return float(match.group(1))
+                    return float(line.split(":")[1].strip().replace("%", ""))
                 except (ValueError, IndexError):
-                    pass
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        pass
-    
-    # Method 3: Check system_profiler for GPU info (basic, not real-time)
-    try:
-        output = subprocess.run(
-            ["system_profiler", "SPDisplaysDataType"],
-            capture_output=True,
-            universal_newlines=True,
-            timeout=5
-        )
-        if output.returncode == 0 and ("M" in output.stdout or "Apple" in output.stdout):
-            # Mac has integrated GPU or dedicated GPU
-            # Return 0.0 as placeholder since we can't get real-time usage easily
-            return 0.0
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        pass
-    
+                    logger.debug(f"Failed to parse GPU metrics: {line}")
+                    return None
+    except subprocess.TimeoutExpired:
+        logger.debug("powermetrics timeout")
+    except FileNotFoundError:
+        logger.debug("powermetrics not available (requires macOS system utility)")
+    except PermissionError:
+        logger.info("GPU metrics require elevated privileges (run with sudo)")
+    except Exception as e:
+        logger.debug(f"Failed to get GPU usage: {e}")
     return None
 
 
@@ -170,6 +131,7 @@ class MoskoMeter(QtWidgets.QMainWindow):
     - Network throughput (KB/s)
     - Network latency (ms)
 
+    Also displays GPU and NPU metrics in the status bar when available.
     """
 
     def __init__(self):
@@ -177,11 +139,11 @@ class MoskoMeter(QtWidgets.QMainWindow):
         super().__init__()
 
         # Window setup
-        self.setWindowTitle("Mosko Meter v7.0")
-        self.setGeometry(100, 100, 1500, 1200)
+        self.setWindowTitle("Mosko Meter")
+        self.setGeometry(100, 100, 1200, 900)
         self.setWindowIcon(self._create_icon())
 
-        # Central widget with tabs
+        # Central widget and layout
         self.central = QtWidgets.QWidget()
         self.setCentralWidget(self.central)
         main_layout = QtWidgets.QVBoxLayout(self.central)
@@ -192,135 +154,19 @@ class MoskoMeter(QtWidgets.QMainWindow):
         pg.setConfigOption("background", DARKMODE_BG)
         pg.setConfigOption("foreground", DARKMODE_FG)
 
-        # Apply modern stylesheet
-        self._apply_stylesheet()
-
-        # Create menu bar
-        self._create_menu_bar()
-
-        # Create tab widget
-        self.tabs = QtWidgets.QTabWidget()
-        main_layout.addWidget(self.tabs)
-
-        # Tab 1: Monitoring Dashboard
-        self.monitor_tab = QtWidgets.QWidget()
-        monitor_layout = QtWidgets.QVBoxLayout(self.monitor_tab)
-        monitor_layout.setContentsMargins(5, 5, 5, 5)
-        monitor_layout.setSpacing(3)
-
         # Create graph widgets with proper Y-axis ranges
         self.cpu_plot = self._create_plot("CPU %", y_range=(0, 100))
         self.mem_plot = self._create_plot("Memory %", y_range=(0, 100))
-        self.load_plot = self._create_plot("System Load Avg", y_range=(0, psutil.cpu_count() * 1.5), auto_scale=True)
         self.net_plot = self._create_plot("Network KB/s", y_range=(0, 100), auto_scale=True)
         self.latency_plot = self._create_plot("Latency (ms)", y_range=(0, 100), auto_scale=True)
-        self.disk_io_plot = self._create_plot("Disk I/O (MB/s)", y_range=(0, 100), auto_scale=True)
 
-        # Add graphs to layout (3 on top, 3 on bottom)
+        # Add graphs to layout
         grid = QtWidgets.QGridLayout()
         grid.addWidget(self.cpu_plot, 0, 0)
         grid.addWidget(self.mem_plot, 0, 1)
-        grid.addWidget(self.load_plot, 0, 2)
         grid.addWidget(self.net_plot, 1, 0)
         grid.addWidget(self.latency_plot, 1, 1)
-        grid.addWidget(self.disk_io_plot, 1, 2)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-        monitor_layout.addLayout(grid)
-        self.tabs.addTab(self.monitor_tab, "Monitoring")
-
-        # Tab 2: Process Manager
-        self.process_tab = QtWidgets.QWidget()
-        process_layout = QtWidgets.QVBoxLayout(self.process_tab)
-        process_layout.setContentsMargins(5, 5, 5, 5)
-        process_layout.setSpacing(5)
-
-        # Process list table
-        self.process_table = QtWidgets.QTableWidget()
-        self.process_table.setColumnCount(5)
-        self.process_table.setHorizontalHeaderLabels(["PID", "Process Name", "CPU %", "Memory %", "Kill"])
-        self.process_table.horizontalHeader().setStretchLastSection(False)
-        self.process_table.setColumnWidth(0, 80)
-        self.process_table.setColumnWidth(1, 300)
-        self.process_table.setColumnWidth(2, 100)
-        self.process_table.setColumnWidth(3, 100)
-        self.process_table.setColumnWidth(4, 80)
-        self.process_table.setMaximumHeight(400)
-        self.process_table.setAlternatingRowColors(True)
-        self.process_table.setRowHeight(0, 28)
-        self.process_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.process_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        process_layout.addWidget(self.process_table)
-
-        # Search/filter bar
-        search_layout = QtWidgets.QHBoxLayout()
-        search_label = QtWidgets.QLabel("Filter:")
-        self.process_filter = QtWidgets.QLineEdit()
-        self.process_filter.setPlaceholderText("Search processes...")
-        self.process_filter.textChanged.connect(self._filter_processes)
-        search_layout.addWidget(search_label)
-        search_layout.addWidget(self.process_filter)
-        process_layout.addLayout(search_layout)
-
-        # Top processes display
-        self.top_processes_text = QtWidgets.QTextEdit()
-        self.top_processes_text.setReadOnly(True)
-        self.top_processes_text.setMaximumHeight(400)
-        process_layout.addWidget(QtWidgets.QLabel("Top 10 Processes by Memory:"))
-        process_layout.addWidget(self.top_processes_text)
-
-        self.tabs.addTab(self.process_tab, "Processes")
-
-        # Tab 3: System Information & Disk
-        self.system_tab = QtWidgets.QWidget()
-        system_layout = QtWidgets.QVBoxLayout(self.system_tab)
-        system_layout.setContentsMargins(5, 5, 5, 5)
-        system_layout.setSpacing(5)
-
-        # System info display
-        self.system_info_text = QtWidgets.QTextEdit()
-        self.system_info_text.setReadOnly(True)
-        self.system_info_text.setMaximumHeight(250)
-        system_layout.addWidget(QtWidgets.QLabel("System Information:"))
-        system_layout.addWidget(self.system_info_text)
-
-        # Disk usage
-        self.disk_table = QtWidgets.QTableWidget()
-        self.disk_table.setColumnCount(4)
-        self.disk_table.setHorizontalHeaderLabels(["Mount Point", "Total (GB)", "Used (GB)", "Used %"])
-        self.disk_table.horizontalHeader().setStretchLastSection(False)
-        self.disk_table.setColumnWidth(0, 200)
-        self.disk_table.setColumnWidth(1, 120)
-        self.disk_table.setColumnWidth(2, 120)
-        self.disk_table.setColumnWidth(3, 100)
-        self.disk_table.setAlternatingRowColors(True)
-        system_layout.addWidget(QtWidgets.QLabel("Disk Usage:"))
-        system_layout.addWidget(self.disk_table)
-
-        # Settings section
-        settings_layout = QtWidgets.QHBoxLayout()
-        settings_layout.addWidget(QtWidgets.QLabel("CPU Alert Threshold (%)"))
-        self.cpu_threshold = QtWidgets.QSpinBox()
-        self.cpu_threshold.setMinimum(10)
-        self.cpu_threshold.setMaximum(100)
-        self.cpu_threshold.setValue(80)
-        settings_layout.addWidget(self.cpu_threshold)
-
-        settings_layout.addWidget(QtWidgets.QLabel("Memory Alert Threshold (%)"))
-        self.mem_threshold = QtWidgets.QSpinBox()
-        self.mem_threshold.setMinimum(10)
-        self.mem_threshold.setMaximum(100)
-        self.mem_threshold.setValue(85)
-        settings_layout.addWidget(self.mem_threshold)
-
-        export_btn = QtWidgets.QPushButton("Export Data")
-        export_btn.clicked.connect(self._export_data)
-        settings_layout.addWidget(export_btn)
-        settings_layout.addStretch()
-
-        system_layout.addLayout(settings_layout)
-        self.tabs.addTab(self.system_tab, "System")
+        main_layout.addLayout(grid)
 
         # Status bar
         self.status_bar = self.statusBar()
@@ -331,255 +177,41 @@ class MoskoMeter(QtWidgets.QMainWindow):
         self.max_points = MAX_DATA_POINTS
         self.cpu_data: deque = deque(maxlen=self.max_points)
         self.mem_data: deque = deque(maxlen=self.max_points)
-        self.load_data: deque = deque(maxlen=self.max_points)
         self.net_data: deque = deque(maxlen=self.max_points)
         self.latency_data: deque = deque(maxlen=self.max_points)
-        self.disk_read_data: deque = deque(maxlen=self.max_points)
-        self.disk_write_data: deque = deque(maxlen=self.max_points)
 
-        # Network/Disk tracking
+        # Network tracking
         self.last_net = psutil.net_io_counters()
-        self.last_disk_io = psutil.disk_io_counters()
         self.first_update = True
 
         # Y-axis tracking for auto-scaling
         self.net_max = 100
         self.latency_max = 100
-        self.disk_max = 100
 
         # Monitoring state
         self.is_paused = False
         self.current_cpu = 0.0
         self.current_mem = 0.0
-        self.current_load = 0.0
         self.current_net = 0.0
         self.current_latency: Optional[float] = None
-        self.current_disk_read = 0.0
-        self.current_disk_write = 0.0
-
-        # Stats tracking for each metric
-        self.cpu_stats = {"min": 0, "max": 100, "avg": 0}
-        self.mem_stats = {"min": 0, "max": 100, "avg": 0}
-        self.load_stats = {"min": 0, "max": 100, "avg": 0}
-        self.net_stats = {"min": 0, "max": 100, "avg": 0}
-        self.latency_stats = {"min": 0, "max": 100, "avg": 0}
-        self.disk_read_stats = {"min": 0, "max": 100, "avg": 0}
-        self.disk_write_stats = {"min": 0, "max": 100, "avg": 0}
-
-        # Process tracking
-        self.process_cache = {}
-        self.all_processes = []
+        self.current_gpu: Optional[float] = None
+        self.current_npu: Optional[float] = None
 
         # Timer setup
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self._update_stats)
         self.timer.start(UPDATE_INTERVAL)
 
-        # Process update timer (less frequent - every 2 seconds)
-        self.process_timer = QtCore.QTimer()
-        self.process_timer.timeout.connect(self._update_processes)
-        self.process_timer.start(2000)
-
-        # System info update timer (every 5 seconds)
-        self.system_timer = QtCore.QTimer()
-        self.system_timer.timeout.connect(self._update_system_info)
-        self.system_timer.start(5000)
-
-        # Disk info update timer (every 3 seconds)
-        self.disk_timer = QtCore.QTimer()
-        self.disk_timer.timeout.connect(self._update_disk_info)
-        self.disk_timer.start(3000)
-
         # Setup keyboard shortcuts
         self._setup_shortcuts()
 
-        # Initial loads
-        self._update_processes()
-        self._update_system_info()
-        self._update_disk_info()
-
-        logger.info("Mosko Meter v7.0 started successfully")
+        logger.info("Mosko Meter started")
 
     def _create_icon(self) -> QtGui.QIcon:
         """Create a simple application icon."""
         pixmap = QtGui.QPixmap(32, 32)
         pixmap.fill(QtGui.QColor(DARKMODE_BG))
         return QtGui.QIcon(pixmap)
-
-    def _apply_stylesheet(self) -> None:
-        """Apply modern dark theme stylesheet."""
-        style = f"""
-        QMainWindow {{
-            background-color: {DARKMODE_BG};
-            color: {DARKMODE_FG};
-        }}
-        
-        QWidget {{
-            background-color: {DARKMODE_BG};
-            color: {DARKMODE_FG};
-        }}
-        
-        /* Tab Widget */
-        QTabWidget {{
-            background-color: {DARKMODE_BG};
-            border: none;
-        }}
-        
-        QTabWidget::pane {{
-            border: 1px solid {BORDER_COLOR};
-            background-color: {SURFACE_COLOR};
-        }}
-        
-        QTabBar::tab {{
-            background-color: {SURFACE_COLOR};
-            color: {DARKMODE_FG};
-            padding: 8px 16px;
-            margin-right: 2px;
-            border: none;
-            border-bottom: 2px solid transparent;
-            font-weight: 500;
-        }}
-        
-        QTabBar::tab:selected {{
-            border-bottom: 2px solid {PRIMARY_COLOR};
-            background-color: {DARKMODE_BG};
-        }}
-        
-        QTabBar::tab:hover {{
-            background-color: {BORDER_COLOR};
-        }}
-        
-        /* Tables */
-        QTableWidget {{
-            background-color: {SURFACE_COLOR};
-            alternate-background-color: {DARKMODE_BG};
-            gridline-color: {BORDER_COLOR};
-            border: 1px solid {BORDER_COLOR};
-        }}
-        
-        QTableWidget::item {{
-            padding: 5px;
-            border: none;
-        }}
-        
-        QTableWidget::item:selected {{
-            background-color: {PRIMARY_COLOR};
-            color: {DARKMODE_BG};
-        }}
-        
-        QHeaderView::section {{
-            background-color: {BORDER_COLOR};
-            color: {DARKMODE_FG};
-            padding: 5px;
-            border: none;
-            font-weight: bold;
-        }}
-        
-        /* Buttons */
-        QPushButton {{
-            background-color: {PRIMARY_COLOR};
-            color: {DARKMODE_BG};
-            border: none;
-            border-radius: 4px;
-            padding: 6px 12px;
-            font-weight: bold;
-            font-size: 11px;
-        }}
-        
-        QPushButton:hover {{
-            background-color: #00e6ff;
-        }}
-        
-        QPushButton:pressed {{
-            background-color: #00b8d4;
-        }}
-        
-        QPushButton[killButton="true"] {{
-            background-color: {ACCENT_COLOR};
-        }}
-        
-        QPushButton[killButton="true"]:hover {{
-            background-color: #ff8080;
-        }}
-        
-        /* Input Fields */
-        QLineEdit {{
-            background-color: {SURFACE_COLOR};
-            color: {DARKMODE_FG};
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 4px;
-            padding: 6px;
-            selection-background-color: {PRIMARY_COLOR};
-        }}
-        
-        QLineEdit:focus {{
-            border: 2px solid {PRIMARY_COLOR};
-        }}
-        
-        /* Text Edit */
-        QTextEdit {{
-            background-color: {SURFACE_COLOR};
-            color: {DARKMODE_FG};
-            border: 1px solid {BORDER_COLOR};
-            border-radius: 4px;
-            padding: 5px;
-        }}
-        
-        /* Status Bar */
-        QStatusBar {{
-            background-color: {SURFACE_COLOR};
-            color: {DARKMODE_FG};
-            border-top: 1px solid {BORDER_COLOR};
-        }}
-        
-        QStatusBar::item {{
-            border: none;
-        }}
-        
-        /* Labels */
-        QLabel {{
-            color: {DARKMODE_FG};
-        }}
-        
-        /* Message Box */
-        QMessageBox {{
-            background-color: {DARKMODE_BG};
-        }}
-        
-        QMessageBox QLabel {{
-            color: {DARKMODE_FG};
-        }}
-        
-        QMessageBox QPushButton {{
-            min-width: 60px;
-        }}
-        """
-        self.setStyleSheet(style)
-
-    def _create_menu_bar(self) -> None:
-        """Create application menu bar."""
-        menubar = self.menuBar()
-
-        # File menu
-        file_menu = menubar.addMenu("File")
-        export_action = file_menu.addAction("Export Data as CSV")
-        export_action.triggered.connect(self._export_data)
-        file_menu.addSeparator()
-        exit_action = file_menu.addAction("Exit")
-        exit_action.triggered.connect(self.close)
-
-        # View menu
-        view_menu = menubar.addMenu("View")
-        refresh_action = view_menu.addAction("Refresh Now")
-        refresh_action.triggered.connect(self._update_stats)
-
-        # Help menu
-        help_menu = menubar.addMenu("Help")
-        shortcuts_action = help_menu.addAction("Keyboard Shortcuts")
-        shortcuts_action.triggered.connect(self._show_shortcuts)
-        help_menu.addSeparator()
-        about_action = help_menu.addAction("About Mosko Meter")
-        about_action.triggered.connect(self._show_about)
 
     def _setup_shortcuts(self) -> None:
         """Setup keyboard shortcuts."""
@@ -590,11 +222,6 @@ class MoskoMeter(QtWidgets.QMainWindow):
             self,
             self._toggle_pause
         )
-        QtGui.QShortcut(
-            QtGui.QKeySequence(QtCore.Qt.Modifier.CTRL | QtCore.Qt.Key.Key_E),
-            self,
-            self._export_data
-        )
 
     def _create_plot(
         self,
@@ -603,7 +230,7 @@ class MoskoMeter(QtWidgets.QMainWindow):
         auto_scale: bool = False
     ) -> pg.PlotWidget:
         """
-        Create a styled plot widget with enhanced visualization.
+        Create a styled plot widget.
 
         Args:
             title: Plot title
@@ -619,34 +246,6 @@ class MoskoMeter(QtWidgets.QMainWindow):
         plot.setLabel("bottom", "Time (s)")
         plot.setLabel("left", title.split()[0])
         plot.auto_scale = auto_scale
-        
-        # Create plot line items (persistent for smooth updates)
-        plot.line_item = plot.plot(
-            pen=pg.mkPen(color="#ff0000", width=2.5),
-            name="Data"
-        )
-        
-        # Create moving average line
-        plot.avg_line_item = plot.plot(
-            pen=pg.mkPen(color="#ff8800", width=1.5, alpha=0.6),
-            name="Trend"
-        )
-        
-        # Create average reference line
-        plot.avg_ref_line = plot.plot(
-            pen=pg.mkPen(color="#00ff00", width=1, alpha=0.3),
-            name="Average"
-        )
-        
-        # Create scatter plot for current point
-        plot.scatter = pg.ScatterPlotItem(size=10, brush=pg.mkBrush("#00ff00"), pen=pg.mkPen("#ffffff", width=2))
-        plot.addItem(plot.scatter)
-        
-        # Create text item for value display (centered)
-        plot.value_text = pg.TextItem(text="", color="#00ff00", anchor=(0.5, 0.5))
-        plot.value_text.setFont(QtGui.QFont("Arial", 16, QtGui.QFont.Weight.Bold))
-        plot.addItem(plot.value_text)
-        
         return plot
 
     def _toggle_pause(self) -> None:
@@ -661,21 +260,13 @@ class MoskoMeter(QtWidgets.QMainWindow):
             return
 
         try:
-            # CPU (interval=None for non-blocking)
-            self.current_cpu = psutil.cpu_percent(interval=None)
+            # CPU
+            self.current_cpu = psutil.cpu_percent(interval=0.1)
             self.cpu_data.append(self.current_cpu)
-            self._update_metric_stats(self.cpu_data, self.cpu_stats)
 
             # Memory
             self.current_mem = psutil.virtual_memory().percent
             self.mem_data.append(self.current_mem)
-            self._update_metric_stats(self.mem_data, self.mem_stats)
-
-            # System Load Average (1-minute load average)
-            load_avg = os.getloadavg()[0]
-            self.current_load = load_avg
-            self.load_data.append(self.current_load)
-            self._update_metric_stats(self.load_data, self.load_stats)
 
             # Network (skip first update to avoid large spike)
             current_net = psutil.net_io_counters()
@@ -684,7 +275,6 @@ class MoskoMeter(QtWidgets.QMainWindow):
                 recv = current_net.bytes_recv - self.last_net.bytes_recv
                 self.current_net = (sent + recv) / 1024  # Convert to KB/s
                 self.net_data.append(self.current_net)
-                self._update_metric_stats(self.net_data, self.net_stats)
 
                 # Update max for auto-scaling
                 if self.current_net > self.net_max:
@@ -699,49 +289,21 @@ class MoskoMeter(QtWidgets.QMainWindow):
             self.current_latency = get_ping()
             if self.current_latency is not None:
                 self.latency_data.append(self.current_latency)
-                self._update_metric_stats(self.latency_data, self.latency_stats)
 
                 # Update max for auto-scaling
                 if self.current_latency > self.latency_max:
                     self.latency_max = self.current_latency * 1.2
                     self.latency_plot.setYRange(0, self.latency_max)
 
-            # Disk I/O (skip first update to avoid large spike)
-            current_disk_io = psutil.disk_io_counters()
-            if not self.first_update:
-                read_bytes = current_disk_io.read_bytes - self.last_disk_io.read_bytes
-                write_bytes = current_disk_io.write_bytes - self.last_disk_io.write_bytes
-                self.current_disk_read = read_bytes / (1024 * 1024)  # Convert to MB/s
-                self.current_disk_write = write_bytes / (1024 * 1024)  # Convert to MB/s
-                self.disk_read_data.append(self.current_disk_read)
-                self.disk_write_data.append(self.current_disk_write)
-                self._update_metric_stats(self.disk_read_data, self.disk_read_stats)
-                self._update_metric_stats(self.disk_write_data, self.disk_write_stats)
-
-                # Update max for auto-scaling
-                max_disk = max(self.current_disk_read, self.current_disk_write)
-                if max_disk > self.disk_max:
-                    self.disk_max = max_disk * 1.2
-                    self.disk_io_plot.setYRange(0, self.disk_max)
-
-            self.last_disk_io = current_disk_io
-
             # GPU / NPU (optional)
+            self.current_gpu = get_gpu_usage()
             self.current_npu = get_npu_usage()
 
-            # Update plots only if they have data
-            if self.cpu_data:
-                self._refresh_plot(self.cpu_plot, self.cpu_data, self.cpu_stats)
-            if self.mem_data:
-                self._refresh_plot(self.mem_plot, self.mem_data, self.mem_stats)
-            if self.load_data:
-                self._refresh_plot(self.load_plot, self.load_data, self.load_stats)
-            if self.net_data:
-                self._refresh_plot(self.net_plot, self.net_data, self.net_stats)
-            if self.latency_data:
-                self._refresh_plot(self.latency_plot, self.latency_data, self.latency_stats)
-            if self.disk_read_data:
-                self._refresh_disk_plot()
+            # Update plots
+            self._refresh_plot(self.cpu_plot, self.cpu_data)
+            self._refresh_plot(self.mem_plot, self.mem_data)
+            self._refresh_plot(self.net_plot, self.net_data)
+            self._refresh_plot(self.latency_plot, self.latency_data)
 
             # Update status bar and window title
             self._update_status()
@@ -749,511 +311,43 @@ class MoskoMeter(QtWidgets.QMainWindow):
         except Exception as e:
             logger.error(f"Error updating stats: {e}")
 
-    def _update_metric_stats(self, data: deque, stats: dict) -> None:
-        """
-        Update min/max/avg stats for a metric.
-
-        Args:
-            data: Deque of data points
-            stats: Dictionary with 'min', 'max', 'avg' keys
-        """
-        if not data:
-            return
-        
-        values = list(data)
-        stats["min"] = min(values)
-        stats["max"] = max(values)
-        stats["avg"] = sum(values) / len(values)
-
     def _update_status(self) -> None:
         """Update status bar and window title with current metrics."""
         cpu_str = f"CPU {self.current_cpu:.1f}%"
         mem_str = f"MEM {self.current_mem:.1f}%"
-        load_str = f"LOAD {self.current_load:.2f}"
         net_str = f"NET {self.current_net:.1f} KB/s"
         lat_str = f"LAT {self.current_latency:.1f} ms" if self.current_latency else "LAT —"
+        gpu_str = f"GPU {self.current_gpu:.1f}%" if self.current_gpu is not None else "GPU —"
         npu_str = f"NPU {self.current_npu:.1f}%" if self.current_npu is not None else "NPU —"
         pause_str = " [PAUSED]" if self.is_paused else ""
 
         # Update window title
         self.setWindowTitle(
-            f"Mosko Meter v7.0 | {cpu_str} | {mem_str} | {load_str} | {net_str} | {lat_str}{pause_str}"
+            f"Mosko Meter | {cpu_str} | {mem_str} | {net_str} | {lat_str}{pause_str}"
         )
 
-        # Update status bar with enhanced stats
-        cpu_avg = f"Avg: {self.cpu_stats['avg']:.1f}%" if self.cpu_stats['avg'] > 0 else "Avg: —"
-        mem_avg = f"Avg: {self.mem_stats['avg']:.1f}%" if self.mem_stats['avg'] > 0 else "Avg: —"
-        load_avg = f"Avg: {self.load_stats['avg']:.2f}" if self.load_stats['avg'] > 0 else "Avg: —"
-        net_avg = f"Avg: {self.net_stats['avg']:.1f}" if self.net_stats['avg'] > 0 else "Avg: —"
-        lat_avg = f"Avg: {self.latency_stats['avg']:.1f}" if self.latency_stats['avg'] > 0 else "Avg: —"
-        
+        # Update status bar
         self.status_label.setText(
-            f"  {cpu_str} ({cpu_avg})  |  {mem_str} ({mem_avg})  |  {load_str} ({load_avg})  |  {net_str} ({net_avg})  |  "
-            f"{lat_str} ({lat_avg})  |  {npu_str}  [Ctrl+Space: Pause]"
+            f"  {cpu_str}  |  {mem_str}  |  {net_str}  |  {lat_str}  |  {gpu_str}  |  {npu_str}  "
+            f"[Ctrl+Space: Pause]"
         )
 
-    def _refresh_plot(self, plot: pg.PlotWidget, data: deque, stats: dict) -> None:
+    def _refresh_plot(self, plot: pg.PlotWidget, data: deque) -> None:
         """
-        Refresh a plot with smooth data updates and centered value display.
+        Refresh a plot with new data.
 
         Args:
             plot: PlotWidget to update
             data: Deque of data points to plot
-            stats: Dictionary containing min, max, avg values
         """
-        if not data or len(data) == 0:
-            return
-        
-        try:
-            data_list = list(data)
-            x_values = list(range(len(data_list)))
-            current_value = data_list[-1]
-            
-            # Update main red line smoothly with setData
-            plot.line_item.setData(x_values, data_list)
-            
-            # Calculate and update moving average (5-point)
-            window_size = min(5, len(data_list))
-            if window_size > 1:
-                moving_avg = []
-                for i in range(len(data_list)):
-                    start = max(0, i - window_size + 1)
-                    avg = sum(data_list[start:i+1]) / (i - start + 1)
-                    moving_avg.append(avg)
-                plot.avg_line_item.setData(x_values, moving_avg)
-            
-            # Update average reference line (horizontal)
-            avg_val = stats['avg'] if stats['avg'] > 0 else 50
-            plot.avg_ref_line.setData([0, max(1, len(data_list) - 1)], [avg_val, avg_val])
-            
-            # Update scatter point for current value
-            plot.scatter.clear()
-            plot.scatter.addPoints(
-                x=[len(data_list) - 1],
-                y=[current_value],
-                size=10,
-                brush=pg.mkBrush("#00ff00"),
-                pen=pg.mkPen("#ffffff", width=2)
-            )
-            
-            # Determine text color based on value
-            max_val = max(stats['max'], current_value, 1)
-            warn_threshold = max_val * 0.75
-            text_color = "#ff6600" if current_value > warn_threshold else "#00ff00"
-            plot.value_text.setColor(pg.mkColor(text_color))
-            
-            # Update centered text with current value
-            text_str = f"{current_value:.1f}"
-            plot.value_text.setText(text_str)
-            
-            # Center the text on the plot
-            center_x = max(0, (len(data_list) - 1) / 2)
-            center_y = (max_val + stats['min']) / 2
-            plot.value_text.setPos(center_x, center_y)
-            
-        except Exception as e:
-            # Silently handle errors to maintain smooth operation
-            pass
-
-    def _refresh_disk_plot(self) -> None:
-        """Refresh disk I/O plot with separate read and write lines."""
-        if not self.disk_read_data or not self.disk_write_data:
-            return
-        
-        try:
-            read_list = list(self.disk_read_data)
-            write_list = list(self.disk_write_data)
-            x_values = list(range(len(read_list)))
-            
-            current_read = read_list[-1]
-            current_write = write_list[-1]
-            
-            # Update read line (red)
-            if not hasattr(self.disk_io_plot, 'read_line_item'):
-                self.disk_io_plot.read_line_item = self.disk_io_plot.plot(
-                    pen=pg.mkPen(color="#ff0000", width=2.5),
-                    name="Read Speed"
-                )
-            self.disk_io_plot.read_line_item.setData(x_values, read_list)
-            
-            # Update write line (yellow/orange)
-            if not hasattr(self.disk_io_plot, 'write_line_item'):
-                self.disk_io_plot.write_line_item = self.disk_io_plot.plot(
-                    pen=pg.mkPen(color="#ffd43b", width=2.5),
-                    name="Write Speed"
-                )
-            self.disk_io_plot.write_line_item.setData(x_values, write_list)
-            
-            # Calculate moving average for both
-            window_size = min(5, len(read_list))
-            if window_size > 1:
-                read_avg = []
-                write_avg = []
-                for i in range(len(read_list)):
-                    start = max(0, i - window_size + 1)
-                    read_avg.append(sum(read_list[start:i+1]) / (i - start + 1))
-                    write_avg.append(sum(write_list[start:i+1]) / (i - start + 1))
-                
-                if not hasattr(self.disk_io_plot, 'read_avg_line'):
-                    self.disk_io_plot.read_avg_line = self.disk_io_plot.plot(
-                        pen=pg.mkPen(color="#ff6666", width=1.5, style=QtCore.Qt.PenStyle.DashLine),
-                        name="Read Trend"
-                    )
-                self.disk_io_plot.read_avg_line.setData(x_values, read_avg)
-                
-                if not hasattr(self.disk_io_plot, 'write_avg_line'):
-                    self.disk_io_plot.write_avg_line = self.disk_io_plot.plot(
-                        pen=pg.mkPen(color="#ffeb99", width=1.5, style=QtCore.Qt.PenStyle.DashLine),
-                        name="Write Trend"
-                    )
-                self.disk_io_plot.write_avg_line.setData(x_values, write_avg)
-            
-            # Update scatter points for current values
-            if not hasattr(self.disk_io_plot, 'scatter'):
-                self.disk_io_plot.scatter = pg.ScatterPlotItem()
-                self.disk_io_plot.addItem(self.disk_io_plot.scatter)
-            
-            self.disk_io_plot.scatter.clear()
-            self.disk_io_plot.scatter.addPoints(
-                x=[len(read_list) - 1, len(read_list) - 1],
-                y=[current_read, current_write],
-                size=10,
-                brush=pg.mkBrush("#00ff00"),
-                pen=pg.mkPen("#ffffff", width=2)
-            )
-            
-            # Update text display with both values
-            max_val = max(self.disk_read_stats['max'], self.disk_write_stats['max'], 1)
-            text_str = f"R: {current_read:.1f}\nW: {current_write:.1f}"
-            
-            if not hasattr(self.disk_io_plot, 'value_text'):
-                self.disk_io_plot.value_text = pg.TextItem(text=text_str, color="#00ff00")
-                self.disk_io_plot.addItem(self.disk_io_plot.value_text)
-            
-            self.disk_io_plot.value_text.setText(text_str)
-            center_x = max(0, (len(read_list) - 1) / 2)
-            center_y = max_val / 2
-            self.disk_io_plot.value_text.setPos(center_x, center_y)
-            
-        except Exception as e:
-            # Silently handle errors to maintain smooth operation
-            pass
-
-    def _update_processes(self) -> None:
-        """Update process list and display (called every 2 seconds)."""
-        try:
-            # Get all processes with their resource usage
-            self.all_processes = []
-            
-            for proc in psutil.process_iter():
-                try:
-                    # Get process info with timeout
-                    with proc.oneshot():
-                        pinfo = {
-                            'pid': proc.pid,
-                            'name': proc.name(),
-                            'cpu_percent': proc.cpu_percent(interval=None) or 0,
-                            'memory_percent': proc.memory_percent() or 0
-                        }
-                        self.all_processes.append(pinfo)
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                    pass
-            
-            # Sort by memory usage
-            self.all_processes.sort(key=lambda x: x['memory_percent'], reverse=True)
-            
-            # Update process table
-            self._populate_process_table()
-            
-            # Update top processes display
-            self._update_top_processes()
-            
-        except Exception as e:
-            logger.error(f"Error updating processes: {e}", exc_info=True)
-
-    def _populate_process_table(self) -> None:
-        """Populate the process table with current processes."""
-        try:
-            self.process_table.setRowCount(0)
-            
-            # Get filter text
-            filter_text = self.process_filter.text().lower()
-            
-            # Show top 50 processes or filtered results
-            displayed = 0
-            for proc in self.all_processes:
-                if displayed >= 50:
-                    break
-                
-                name = proc.get('name', 'N/A')
-                
-                # Apply filter if specified
-                if filter_text and filter_text not in name.lower():
-                    continue
-                
-                pid = proc.get('pid', 0)
-                cpu = proc.get('cpu_percent', 0) or 0
-                mem = proc.get('memory_percent', 0) or 0
-                
-                row = self.process_table.rowCount()
-                self.process_table.insertRow(row)
-                
-                # PID
-                self.process_table.setItem(row, 0, QtWidgets.QTableWidgetItem(str(pid)))
-                
-                # Name
-                self.process_table.setItem(row, 1, QtWidgets.QTableWidgetItem(name))
-                
-                # CPU %
-                self.process_table.setItem(row, 2, QtWidgets.QTableWidgetItem(f"{cpu:.1f}%"))
-                
-                # Memory %
-                self.process_table.setItem(row, 3, QtWidgets.QTableWidgetItem(f"{mem:.1f}%"))
-                
-                # Kill button
-                kill_btn = QtWidgets.QPushButton("Kill")
-                kill_btn.setProperty("killButton", True)
-                kill_btn.setMaximumWidth(60)
-                kill_btn.clicked.connect(lambda checked, p=pid, pname=name: self._kill_process(p, pname))
-                self.process_table.setCellWidget(row, 4, kill_btn)
-                
-                displayed += 1
-        except Exception as e:
-            logger.error(f"Error populating process table: {e}", exc_info=True)
-
-    def _filter_processes(self) -> None:
-        """Re-populate table based on filter text."""
-        self._populate_process_table()
-
-    def _kill_process(self, pid: int, name: str) -> None:
-        """Kill a process."""
-        try:
-            reply = QtWidgets.QMessageBox.question(
-                self,
-                "Kill Process",
-                f"Are you sure you want to kill '{name}' (PID: {pid})?",
-                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No
-            )
-            
-            if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-                proc = psutil.Process(pid)
-                proc.kill()
-                QtWidgets.QMessageBox.information(self, "Success", f"Process '{name}' terminated.")
-                self._update_processes()
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Error", f"Failed to kill process: {e}")
-
-    def _update_top_processes(self) -> None:
-        """Update display of top 10 processes by memory."""
-        text = "TOP 10 PROCESSES BY MEMORY USAGE\n" + "=" * 60 + "\n\n"
-        
-        for i, proc in enumerate(self.all_processes[:10], 1):
-            name = proc.get('name', 'N/A')
-            pid = proc.get('pid', 0)
-            mem = proc.get('memory_percent', 0) or 0
-            cpu = proc.get('cpu_percent', 0) or 0
-            
-            text += f"{i:2d}. {name:<40} PID: {pid:<8} MEM: {mem:6.2f}%  CPU: {cpu:6.1f}%\n"
-        
-        self.top_processes_text.setText(text)
-
-    def _update_system_info(self) -> None:
-        """Update system information display."""
-        try:
-            import platform
-            uname = platform.uname()
-            
-            # Calculate uptime
-            import time
-            boot_time = psutil.boot_time()
-            uptime_seconds = time.time() - boot_time
-            uptime_hours = uptime_seconds / 3600
-            uptime_days = uptime_hours / 24
-            
-            # Memory info
-            mem = psutil.virtual_memory()
-            swap = psutil.swap_memory()
-            
-            info_text = f"""SYSTEM INFORMATION
-═══════════════════════════════════════════════════════════
-
-OS:                {uname.system} {uname.release}
-Hostname:          {uname.node}
-Architecture:      {uname.machine}
-Processor:         {uname.processor}
-
-CPU Cores:         {psutil.cpu_count(logical=False)} Physical / {psutil.cpu_count()} Logical
-Memory:            {mem.total / (1024**3):.1f} GB
-Memory Available:  {mem.available / (1024**3):.1f} GB
-Swap Memory:       {swap.total / (1024**3):.1f} GB
-
-System Uptime:     {uptime_days:.1f} days ({uptime_hours:.1f} hours)
-
-Python Version:    {platform.python_version()}"""
-            self.system_info_text.setText(info_text)
-        except Exception as e:
-            logger.error(f"Error updating system info: {e}")
-
-    def _update_disk_info(self) -> None:
-        """Update disk usage information."""
-        try:
-            self.disk_table.setRowCount(0)
-            
-            partitions = psutil.disk_partitions()
-            for partition in partitions:
-                try:
-                    usage = psutil.disk_usage(partition.mountpoint)
-                    row = self.disk_table.rowCount()
-                    self.disk_table.insertRow(row)
-                    
-                    total_gb = usage.total / (1024**3)
-                    used_gb = usage.used / (1024**3)
-                    percent = usage.percent
-                    
-                    self.disk_table.setItem(row, 0, QtWidgets.QTableWidgetItem(partition.mountpoint))
-                    self.disk_table.setItem(row, 1, QtWidgets.QTableWidgetItem(f"{total_gb:.1f}"))
-                    self.disk_table.setItem(row, 2, QtWidgets.QTableWidgetItem(f"{used_gb:.1f}"))
-                    self.disk_table.setItem(row, 3, QtWidgets.QTableWidgetItem(f"{percent:.1f}%"))
-                except (PermissionError, OSError):
-                    pass
-        except Exception as e:
-            logger.error(f"Error updating disk info: {e}")
-
-    def _export_data(self) -> None:
-        """Export performance metrics as CSV."""
-        try:
-            from datetime import datetime
-            filename = f"mosko_meter_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            filepath = QtWidgets.QFileDialog.getSaveFileName(self, "Export Data", filename, "CSV Files (*.csv)")[0]
-            
-            if not filepath:
-                return
-            
-            with open(filepath, 'w') as f:
-                f.write("Mosko Meter Performance Export\n")
-                f.write(f"Exported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                
-                # CPU data
-                f.write("CPU Data\n")
-                f.write("Index,CPU %\n")
-                for i, val in enumerate(self.cpu_data):
-                    f.write(f"{i},{val:.1f}\n")
-                
-                f.write("\nMemory Data\n")
-                f.write("Index,Memory %\n")
-                for i, val in enumerate(self.mem_data):
-                    f.write(f"{i},{val:.1f}\n")
-                
-                f.write("\nNetwork Data\n")
-                f.write("Index,Network KB/s\n")
-                for i, val in enumerate(self.net_data):
-                    f.write(f"{i},{val:.1f}\n")
-                
-                f.write("\nLatency Data\n")
-                f.write("Index,Latency ms\n")
-                for i, val in enumerate(self.latency_data):
-                    f.write(f"{i},{val:.1f}\n")
-            
-            QtWidgets.QMessageBox.information(self, "Export Successful", f"Data exported to:\n{filepath}")
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Export Failed", f"Error exporting data: {e}")
-
-    def _show_shortcuts(self) -> None:
-        """Show keyboard shortcuts dialog."""
-        shortcuts_text = """KEYBOARD SHORTCUTS
-═══════════════════════════════════════════════════════
-
-Ctrl+Space    →    Pause/Resume monitoring
-Ctrl+Q        →    Exit application
-Ctrl+E        →    Export data as CSV
-
-Tab Navigation  →  Switch between tabs using keyboard
-Click to Kill    →  Right-click process to terminate"""
-        
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Keyboard Shortcuts")
-        dialog.setGeometry(200, 200, 500, 300)
-        
-        layout = QtWidgets.QVBoxLayout()
-        text = QtWidgets.QTextEdit()
-        text.setText(shortcuts_text)
-        text.setReadOnly(True)
-        layout.addWidget(text)
-        
-        close_btn = QtWidgets.QPushButton("Close")
-        close_btn.clicked.connect(dialog.close)
-        layout.addWidget(close_btn)
-        
-        dialog.setLayout(layout)
-        dialog.exec()
-
-    def _show_about(self) -> None:
-        """Show about dialog."""
-        about_text = """╔════════════════════════════════════════════════════════════════╗
-║                     MOSKO METER v7.0                           ║
-║                  Professional System Monitor                   ║
-╚════════════════════════════════════════════════════════════════╝
-
-FEATURES:
-─────────────────────────────────────────────────────────────────
-✓ Real-time CPU, Memory, Network, Latency monitoring
-✓ Advanced Process Manager with process termination capability
-✓ System Information and Disk Usage tracking
-✓ Performance Metrics with Min/Max/Average statistics
-✓ Customizable Alert Thresholds
-✓ Data Export to CSV format
-✓ Modern Dark Theme Interface
-✓ Smooth, responsive charts with animations
-✓ Network Speed Analysis
-✓ Memory & CPU Trend Analysis
-✓ Multiple monitoring tabs
-✓ Keyboard shortcuts support
-
-ABOUT:
-─────────────────────────────────────────────────────────────────
-Mosko Meter is a professional-grade system monitoring tool
-designed for macOS systems. It provides real-time insights into
-system performance with an intuitive, modern interface.
-
-All Rights Reserved © 2026
-
-Author Information:
-  Chris Moskowitz
-  Email: cmoskowitz@gmail.com
-  
-Built with PyQt6 and pyqtgraph for high-performance visualization.
-
-SYSTEM REQUIREMENTS:
-─────────────────────────────────────────────────────────────────
-• macOS 10.15 or later
-• Python 3.8+
-• PyQt6
-• psutil
-• pyqtgraph"""
-        
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("About Mosko Meter")
-        dialog.setGeometry(150, 150, 750, 650)
-        
-        layout = QtWidgets.QVBoxLayout()
-        text = QtWidgets.QTextEdit()
-        text.setText(about_text)
-        text.setReadOnly(True)
-        text.setFont(QtGui.QFont("Courier", 9))
-        layout.addWidget(text)
-        
-        close_btn = QtWidgets.QPushButton("Close")
-        close_btn.clicked.connect(dialog.close)
-        layout.addWidget(close_btn)
-        
-        dialog.setLayout(layout)
-        dialog.exec()
+        plot.clear()
+        if data:
+            plot.plot(list(data), pen=pg.mkPen(color="#00d4ff", width=2))
 
     def closeEvent(self, event):
         """Handle window close event with proper cleanup."""
         logger.info("Mosko Meter shutting down")
         self.timer.stop()
-        self.process_timer.stop()
         event.accept()
 
 
