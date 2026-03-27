@@ -11,7 +11,7 @@ set -euo pipefail
 
 APP_NAME="MoskoMeter"
 PKG_ID="com.mosko.moskometer"
-VERSION="1.0.0"
+VERSION="7.0.0"
 INSTALL_LOCATION="/Applications"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
@@ -82,15 +82,30 @@ fi
 
 echo "==> App bundle created: $APP_BUNDLE"
 
-# ── Optional: ad-hoc or developer code signing ────────────────────────────────
+# ── Code signing ──────────────────────────────────────────────────────────────
+# For one-dir app bundles, sign leaf binaries/frameworks first, then the bundle.
+# codesign --deep is deprecated and unreliable for Qt app bundles.
+sign_bundle() {
+    local identity="$1"
+    echo "==> Signing frameworks and dylibs..."
+    # Sign all dynamic libraries inside the bundle (deepest first)
+    find "$APP_BUNDLE" -name "*.dylib" -o -name "*.so" | sort -r | while read -r lib; do
+        codesign --force --sign "$identity" "$lib" 2>/dev/null || true
+    done
+    # Sign any nested executables
+    find "$APP_BUNDLE/Contents/MacOS" -type f ! -name "MoskoMeter" | while read -r bin; do
+        codesign --force --sign "$identity" "$bin" 2>/dev/null || true
+    done
+    echo "==> Signing app bundle..."
+    codesign --force --verify --sign "$identity" "$APP_BUNDLE"
+}
+
 if [[ -n "$SIGN_IDENTITY" ]]; then
     echo "==> Signing app bundle with: $SIGN_IDENTITY"
-    codesign --deep --force --verify --verbose \
-        --sign "$SIGN_IDENTITY" \
-        "$APP_BUNDLE"
+    sign_bundle "$SIGN_IDENTITY"
 else
     echo "==> Applying ad-hoc signature (no Developer ID)..."
-    codesign --deep --force --sign - "$APP_BUNDLE"
+    sign_bundle "-"
 fi
 
 # ── Build .pkg with pkgbuild ──────────────────────────────────────────────────

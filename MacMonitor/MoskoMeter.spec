@@ -3,7 +3,19 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
-hiddenimports = ['PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets', 'PyQt6.QtDBus', 'PyQt6.QtNetwork', 'pyqtgraph', 'psutil', '_struct', '_psutil_osx', 'collections.deque', 'typing', 'sip', 'numpy']
+hiddenimports = [
+    'PyQt6.QtCore',
+    'PyQt6.QtGui',
+    'PyQt6.QtWidgets',
+    'PyQt6.QtNetwork',
+    'pyqtgraph',
+    'psutil',
+    '_struct',
+    '_psutil_osx',
+    'typing',
+    'sip',
+    'numpy',
+]
 tmp_ret = collect_all('PyQt6')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('pyqtgraph')
@@ -27,29 +39,51 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# One-dir mode: binaries/datas are collected separately so the .app bundle
+# has a proper directory structure instead of a self-extracting single binary.
+# Self-extracting single binaries are blocked by macOS Gatekeeper on modern systems.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='MoskoMeter',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
-    argv_emulation=False,
+    argv_emulation=True,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
 )
-app = BUNDLE(
+
+coll = COLLECT(
     exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='MoskoMeter',
+)
+
+app = BUNDLE(
+    coll,
     name='MoskoMeter.app',
     icon=None,
-    bundle_identifier=None,
+    bundle_identifier='com.mosko.moskometer',
+    info_plist={
+        'CFBundleName': 'MoskoMeter',
+        'CFBundleDisplayName': 'Mosko Meter',
+        'CFBundleShortVersionString': '7.0.0',
+        'CFBundleVersion': '7.0.0',
+        'LSMinimumSystemVersion': '10.15.0',
+        'NSHighResolutionCapable': True,
+        'NSPrincipalClass': 'NSApplication',
+        'LSApplicationCategoryType': 'public.app-category.utilities',
+        'NSRequiresAquaSystemAppearance': False,
+    },
 )
