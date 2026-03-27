@@ -125,18 +125,24 @@ else
 fi
 
 # ── Build .pkg with pkgbuild ──────────────────────────────────────────────────
-echo "==> Building .pkg installer: $OUTPUT_PKG"
+# Use --root (staging dir) instead of --component so pkgbuild skips its bundle
+# analysis step, which fails on PyInstaller-built app bundles.
+echo "==> Staging app bundle..."
+PKG_STAGE="$BUILD_DIR/pkg_stage"
+rm -rf "$PKG_STAGE"
+mkdir -p "$PKG_STAGE/Applications"
+cp -r "$APP_BUNDLE" "$PKG_STAGE/Applications/"
 
+echo "==> Building .pkg installer: $OUTPUT_PKG"
 PKG_ARGS=(
-    --component "$APP_BUNDLE"
-    --install-location "$INSTALL_LOCATION"
+    --root "$PKG_STAGE"
+    --install-location "/"
     --identifier "$PKG_ID"
     --version "$VERSION"
     --ownership recommended
 )
 
 if [[ -n "$SIGN_IDENTITY" ]]; then
-    # Derive installer signing identity from app signing identity
     INSTALLER_IDENTITY="${SIGN_IDENTITY/Developer ID Application/Developer ID Installer}"
     PKG_ARGS+=(--sign "$INSTALLER_IDENTITY")
 fi
