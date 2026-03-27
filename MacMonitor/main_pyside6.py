@@ -17,7 +17,7 @@ import os
 import psutil
 from collections import deque
 from typing import Optional
-from PyQt6 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 
 # Configure logging
@@ -788,29 +788,6 @@ class MoskoMeter(QtWidgets.QMainWindow):
 
         except Exception as e:
             logger.error(f"Error updating stats: {e}")
-
-    def _update_status(self) -> None:
-        """Update the status bar with current system metrics."""
-        try:
-            gpu_text = f" | GPU: {self.current_npu:.1f}%" if self.current_npu is not None else ""
-            latency_text = f" | Ping: {self.current_latency:.0f}ms" if self.current_latency is not None else ""
-            
-            status_text = (
-                f"CPU: {self.current_cpu:.1f}% | "
-                f"Mem: {self.current_mem:.1f}% | "
-                f"Load: {self.current_load:.2f} | "
-                f"Net: {self.current_net:.0f} KB/s"
-                f"{latency_text}"
-                f"{gpu_text}"
-            )
-            
-            self.status_label.setText(status_text)
-            
-            # Update window title with key metrics
-            self.setWindowTitle(f"Mosko Meter v7.0 - CPU: {self.current_cpu:.1f}% | Mem: {self.current_mem:.1f}%")
-            
-        except Exception as e:
-            logger.error(f"Error updating status: {e}")
 
     def _update_metric_stats(self, data: deque, stats: dict) -> None:
         """
