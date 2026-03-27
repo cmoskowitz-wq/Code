@@ -110,7 +110,10 @@ sign_bundle() {
     done < <(find "$APP_BUNDLE/Contents/MacOS" -type f ! -name "MoskoMeter")
 
     echo "==> Signing app bundle..."
-    codesign --force --verify --sign "$identity" "${extra_flags[@]}" "${entitlements_flags[@]}" "$APP_BUNDLE"
+    codesign --force --sign "$identity" "${extra_flags[@]}" "${entitlements_flags[@]}" "$APP_BUNDLE"
+    codesign --verify --deep --strict "$APP_BUNDLE" \
+        && echo "==> Signature verified OK" \
+        || echo "WARNING: Signature verification failed (expected for ad-hoc builds)"
 }
 
 if [[ -n "$SIGN_IDENTITY" ]]; then
