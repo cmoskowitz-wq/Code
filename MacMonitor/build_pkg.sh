@@ -11,12 +11,11 @@ set -euo pipefail
 
 APP_NAME="MoskoMeter"
 PKG_ID="com.mosko.moskometer"
-VERSION="1.0.0"
+VERSION="7.0.0"
 INSTALL_LOCATION="/Applications"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 DIST_DIR="$SCRIPT_DIR/dist"
-PKG_STAGE="$BUILD_DIR/pkg_stage"
 OUTPUT_PKG="$SCRIPT_DIR/${APP_NAME}-${VERSION}.pkg"
 SIGN_IDENTITY=""
 
@@ -82,27 +81,52 @@ fi
 
 echo "==> App bundle created: $APP_BUNDLE"
 
-# ── Optional: ad-hoc or developer code signing ────────────────────────────────
+# ── Code signing ──────────────────────────────────────────────────────────────
+# For one-dir app bundles, sign leaf binaries/frameworks first (deepest path
+# first), then sign the bundle itself.
+sign_bundle() {
+    local identity="$1"
+    local extra_flags=()
+    # Developer ID signing needs hardened runtime + secure timestamp for notarization
+    if [[ "$identity" != "-" ]]; then
+        extra_flags=(--options runtime --timestamp)
+    fi
+
+    echo "==> Signing dylibs and extension modules (deepest first)..."
+    # Sort by path length (longest = deepest) so inner libs are signed before outer ones.
+    # Use process substitution to keep the while loop in the current shell (required
+    # for set -euo pipefail to behave correctly — a pipe would run it in a subshell).
+    while IFS= read -r lib; do
+        codesign --force --sign "$identity" "${extra_flags[@]}" "$lib" 2>/dev/null || true
+    done < <(find "$APP_BUNDLE" \( -name "*.dylib" -o -name "*.so" \) \
+             | awk '{ print length, $0 }' | sort -rn | awk '{ $1=""; print substr($0,2) }')
+
+    # Sign any other executables nested under MacOS/ (e.g. helper tools)
+    while IFS= read -r bin; do
+        codesign --force --sign "$identity" "${extra_flags[@]}" "$bin" 2>/dev/null || true
+    done < <(find "$APP_BUNDLE/Contents/MacOS" -type f ! -name "MoskoMeter")
+
+    echo "==> Signing app bundle..."
+    codesign --force --verify --sign "$identity" "${extra_flags[@]}" "$APP_BUNDLE"
+}
+
 if [[ -n "$SIGN_IDENTITY" ]]; then
     echo "==> Signing app bundle with: $SIGN_IDENTITY"
-    codesign --deep --force --verify --verbose \
-        --sign "$SIGN_IDENTITY" \
-        "$APP_BUNDLE"
+    sign_bundle "$SIGN_IDENTITY"
 else
     echo "==> Applying ad-hoc signature (no Developer ID)..."
-    codesign --deep --force --sign - "$APP_BUNDLE"
+    sign_bundle "-"
 fi
 
 # ── Build .pkg with pkgbuild ──────────────────────────────────────────────────
 echo "==> Building .pkg installer..."
-rm -rf "$PKG_STAGE"
-mkdir -p "$PKG_STAGE"
 
 PKG_ARGS=(
     --component "$APP_BUNDLE"
     --install-location "$INSTALL_LOCATION"
     --identifier "$PKG_ID"
     --version "$VERSION"
+    --ownership recommended
 )
 
 if [[ -n "$SIGN_IDENTITY" ]]; then
