@@ -125,7 +125,7 @@ else
 fi
 
 # ── Build .pkg with pkgbuild ──────────────────────────────────────────────────
-echo "==> Building .pkg installer..."
+echo "==> Building .pkg installer: $OUTPUT_PKG"
 
 PKG_ARGS=(
     --component "$APP_BUNDLE"
