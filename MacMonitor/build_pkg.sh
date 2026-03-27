@@ -87,9 +87,12 @@ echo "==> App bundle created: $APP_BUNDLE"
 sign_bundle() {
     local identity="$1"
     local extra_flags=()
-    # Developer ID signing needs hardened runtime + secure timestamp for notarization
+    local entitlements_flags=()
+    # Developer ID signing needs hardened runtime + secure timestamp for notarization.
+    # Entitlements allow PyInstaller's bundled Python to load unsigned libs and JIT.
     if [[ "$identity" != "-" ]]; then
         extra_flags=(--options runtime --timestamp)
+        entitlements_flags=(--entitlements "$SCRIPT_DIR/entitlements.plist")
     fi
 
     echo "==> Signing dylibs and extension modules (deepest first)..."
@@ -107,7 +110,7 @@ sign_bundle() {
     done < <(find "$APP_BUNDLE/Contents/MacOS" -type f ! -name "MoskoMeter")
 
     echo "==> Signing app bundle..."
-    codesign --force --verify --sign "$identity" "${extra_flags[@]}" "$APP_BUNDLE"
+    codesign --force --verify --sign "$identity" "${extra_flags[@]}" "${entitlements_flags[@]}" "$APP_BUNDLE"
 }
 
 if [[ -n "$SIGN_IDENTITY" ]]; then

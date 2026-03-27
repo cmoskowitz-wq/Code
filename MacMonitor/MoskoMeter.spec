@@ -8,6 +8,7 @@ hiddenimports = [
     'PyQt6.QtGui',
     'PyQt6.QtWidgets',
     'PyQt6.QtNetwork',
+    'PyQt6.QtOpenGL',
     'pyqtgraph',
     'psutil',
     '_struct',
@@ -31,7 +32,19 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    hooksconfig={},
+    # Explicitly bundle the Qt plugins required to run on macOS.
+    # Without 'platforms', Qt cannot find libqcocoa.dylib and the app
+    # exits silently on launch without showing any window or error.
+    hooksconfig={
+        'PyQt6': {
+            'qt_plugins': [
+                'platforms',
+                'styles',
+                'imageformats',
+                'iconengines',
+            ],
+        },
+    },
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
@@ -39,9 +52,8 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-# One-dir mode: binaries/datas are collected separately so the .app bundle
-# has a proper directory structure instead of a self-extracting single binary.
-# Self-extracting single binaries are blocked by macOS Gatekeeper on modern systems.
+# One-dir mode: keeps the .app bundle as a proper directory structure.
+# Self-extracting single-file binaries are blocked by Gatekeeper on modern macOS.
 exe = EXE(
     pyz,
     a.scripts,
@@ -57,7 +69,7 @@ exe = EXE(
     argv_emulation=True,
     target_arch=None,
     codesign_identity=None,
-    entitlements_file=None,
+    entitlements_file='entitlements.plist',
 )
 
 coll = COLLECT(

@@ -1411,7 +1411,16 @@ def main() -> None:
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
         print(f"Fatal error starting Mosko Meter: {e}")
-        print("Check the log file for more details.")
+        # Show a visible error dialog so the app doesn't silently vanish on macOS
+        try:
+            _err_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+            QtWidgets.QMessageBox.critical(
+                None,
+                "Mosko Meter — Fatal Error",
+                f"Failed to start:\n\n{e}\n\nCheck Console.app for full details.",
+            )
+        except Exception:
+            pass
         sys.exit(1)
 
 
