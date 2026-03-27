@@ -34,10 +34,11 @@ _HTML_HEAD = """\
     color: #333;
     margin: 0;
     padding: 0;
+    -webkit-text-size-adjust: 100%;
   }}
   .wrapper {{
-    max-width: 780px;
-    margin: 24px auto;
+    max-width: 680px;
+    margin: 0 auto;
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,.08);
@@ -46,11 +47,11 @@ _HTML_HEAD = """\
   .header {{
     background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
     color: #fff;
-    padding: 28px 32px;
+    padding: 24px 20px;
   }}
   .header h1 {{
     margin: 0 0 6px;
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     letter-spacing: .3px;
   }}
@@ -62,18 +63,21 @@ _HTML_HEAD = """\
   .summary-bar {{
     background: #f0f4ff;
     border-bottom: 1px solid #dbe4f5;
-    padding: 12px 32px;
+    padding: 12px 20px;
     font-size: 13px;
     color: #555;
-    display: flex;
-    gap: 24px;
+  }}
+  .summary-bar span {{
+    display: inline-block;
+    margin-right: 16px;
+    margin-bottom: 4px;
   }}
   .summary-bar strong {{ color: #1e3a5f; font-size: 15px; }}
   .section-title {{
     font-size: 18px;
     font-weight: 700;
     color: #1e3a5f;
-    padding: 24px 32px 8px;
+    padding: 20px 20px 8px;
     border-bottom: 2px solid #e8edf5;
     margin: 0;
   }}
@@ -85,41 +89,33 @@ _HTML_HEAD = """\
     font-weight: 600;
     padding: 2px 8px;
     border-radius: 12px;
-    margin-right: 6px;
     text-transform: uppercase;
     letter-spacing: .5px;
   }}
-  table {{
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }}
-  th {{
-    text-align: left;
-    padding: 10px 16px;
-    background: #f8fafc;
-    color: #888;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .6px;
-    font-weight: 600;
-    border-bottom: 1px solid #e2e8f0;
-  }}
-  td {{
-    padding: 12px 16px;
+  .job-card {{
+    padding: 14px 20px;
     border-bottom: 1px solid #f0f0f0;
-    vertical-align: top;
   }}
-  tr:hover td {{ background: #fafbff; }}
+  .job-card:last-child {{ border-bottom: none; }}
+  .job-card-title {{
+    margin: 0 0 6px;
+    font-size: 15px;
+    line-height: 1.3;
+  }}
   a.job-link {{
     color: #2563eb;
     text-decoration: none;
     font-weight: 600;
   }}
   a.job-link:hover {{ text-decoration: underline; }}
-  .company {{ color: #555; }}
-  .location {{ color: #888; font-size: 13px; }}
-  .posted {{ color: #aaa; font-size: 12px; white-space: nowrap; }}
+  .job-card-meta {{
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+  }}
+  .job-card-meta .company {{ color: #333; font-weight: 500; }}
+  .job-card-meta .location {{ color: #888; }}
+  .job-card-meta .posted {{ color: #aaa; font-size: 12px; }}
   .remote-badge {{
     background: #dcfce7;
     color: #166534;
@@ -129,32 +125,69 @@ _HTML_HEAD = """\
     border-radius: 4px;
     margin-left: 6px;
     text-transform: uppercase;
+    vertical-align: middle;
   }}
   .no-jobs {{
-    padding: 20px 32px;
+    padding: 20px;
     color: #999;
     font-style: italic;
     font-size: 14px;
   }}
   .footer {{
     background: #f8fafc;
-    padding: 18px 32px;
+    padding: 18px 20px;
     font-size: 12px;
     color: #aaa;
     border-top: 1px solid #e2e8f0;
     text-align: center;
   }}
   .toc {{
-    padding: 16px 32px 8px;
+    padding: 14px 20px 8px;
     font-size: 13px;
     color: #555;
+    line-height: 1.8;
   }}
   .toc a {{
     color: #2563eb;
     text-decoration: none;
-    margin-right: 14px;
+    margin-right: 10px;
+    white-space: nowrap;
   }}
   .toc a:hover {{ text-decoration: underline; }}
+
+  /* ── Mobile (iPhone-friendly) ── */
+  @media only screen and (max-width: 480px) {{
+    .wrapper {{
+      border-radius: 0;
+      box-shadow: none;
+    }}
+    .header {{
+      padding: 18px 16px;
+    }}
+    .header h1 {{
+      font-size: 19px;
+    }}
+    .summary-bar {{
+      padding: 10px 16px;
+    }}
+    .summary-bar span {{
+      display: block;
+      margin-right: 0;
+    }}
+    .section-title {{
+      padding: 16px 16px 8px;
+      font-size: 16px;
+    }}
+    .job-card {{
+      padding: 12px 16px;
+    }}
+    .toc {{
+      padding: 12px 16px 8px;
+    }}
+    .footer {{
+      padding: 16px;
+    }}
+  }}
 </style>
 </head>
 <body>
@@ -244,47 +277,47 @@ def build_html_report(jobs: List[Job], config: dict) -> str:
             html += '<p class="no-jobs">No results found in the last 24 hours for this title.</p>\n'
             continue
 
-        html += """
-  <table>
-    <thead>
-      <tr>
-        <th>Job Title</th>
-        <th>Company</th>
-        <th>Location</th>
-        <th>Board</th>
-        <th>Posted</th>
-      </tr>
-    </thead>
-    <tbody>
-"""
         for job in sorted(title_jobs,
-                          key=lambda j: j.posted or datetime.min.replace(tzinfo=timezone.utc),
+                          key=lambda j: (j.posted.replace(tzinfo=timezone.utc)
+                                         if j.posted and j.posted.tzinfo is None
+                                         else j.posted)
+                                        or datetime.min.replace(tzinfo=timezone.utc),
                           reverse=True):
             link = (f'<a class="job-link" href="{_escape(job.url)}" '
                     f'target="_blank">{_escape(job.title)}</a>'
                     if job.url else _escape(job.title))
-            remote_badge = '<span class="remote-badge">Remote</span>' if job.remote else ""
+            remote_badge = ' <span class="remote-badge">Remote</span>' if job.remote else ""
+            location_str = f' &bull; <span class="location">{_escape(job.location)}</span>' if job.location else ""
             html += f"""
-      <tr>
-        <td>{link}{remote_badge}</td>
-        <td class="company">{_escape(job.company)}</td>
-        <td class="location">{_escape(job.location)}</td>
-        <td><span class="board-badge">{_escape(job.source)}</span></td>
-        <td class="posted">{_fmt_posted(job.posted)}</td>
-      </tr>"""
+  <div class="job-card">
+    <div class="job-card-title">{link}{remote_badge}</div>
+    <div class="job-card-meta">
+      <span class="company">{_escape(job.company)}</span>{location_str}
+      &bull; <span class="board-badge">{_escape(job.source)}</span>
+      &bull; <span class="posted">{_fmt_posted(job.posted)}</span>
+    </div>
+  </div>"""
 
-        html += "\n    </tbody>\n  </table>\n"
+        html += "\n"
 
     # Any jobs whose title wasn't in the configured list (edge case)
     uncategorized = [j for j in jobs if j.search_term not in job_titles]
     if uncategorized:
         html += '<h2 class="section-title">Other Results</h2>\n'
-        html += "<table><thead><tr><th>Title</th><th>Company</th><th>Location</th><th>Board</th><th>Posted</th></tr></thead><tbody>\n"
         for job in uncategorized:
-            link = (f'<a class="job-link" href="{_escape(job.url)}">{_escape(job.title)}</a>'
+            link = (f'<a class="job-link" href="{_escape(job.url)}" target="_blank">{_escape(job.title)}</a>'
                     if job.url else _escape(job.title))
-            html += f"<tr><td>{link}</td><td>{_escape(job.company)}</td><td>{_escape(job.location)}</td><td><span class='board-badge'>{_escape(job.source)}</span></td><td class='posted'>{_fmt_posted(job.posted)}</td></tr>\n"
-        html += "</tbody></table>\n"
+            location_str = f' &bull; <span class="location">{_escape(job.location)}</span>' if job.location else ""
+            html += f"""
+  <div class="job-card">
+    <div class="job-card-title">{link}</div>
+    <div class="job-card-meta">
+      <span class="company">{_escape(job.company)}</span>{location_str}
+      &bull; <span class="board-badge">{_escape(job.source)}</span>
+      &bull; <span class="posted">{_fmt_posted(job.posted)}</span>
+    </div>
+  </div>"""
+        html += "\n"
 
     html += _HTML_FOOT.format(generated=now_str)
     return html
