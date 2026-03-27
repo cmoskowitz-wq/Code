@@ -83,21 +83,32 @@ fi
 echo "==> App bundle created: $APP_BUNDLE"
 
 # ── Code signing ──────────────────────────────────────────────────────────────
-# For one-dir app bundles, sign leaf binaries/frameworks first, then the bundle.
-# codesign --deep is deprecated and unreliable for Qt app bundles.
+# For one-dir app bundles, sign leaf binaries/frameworks first (deepest path
+# first), then sign the bundle itself.
 sign_bundle() {
     local identity="$1"
-    echo "==> Signing frameworks and dylibs..."
-    # Sign all dynamic libraries inside the bundle (deepest first)
-    find "$APP_BUNDLE" -name "*.dylib" -o -name "*.so" | sort -r | while read -r lib; do
-        codesign --force --sign "$identity" "$lib" 2>/dev/null || true
-    done
-    # Sign any nested executables
-    find "$APP_BUNDLE/Contents/MacOS" -type f ! -name "MoskoMeter" | while read -r bin; do
-        codesign --force --sign "$identity" "$bin" 2>/dev/null || true
-    done
+    local extra_flags=()
+    # Developer ID signing needs hardened runtime + secure timestamp for notarization
+    if [[ "$identity" != "-" ]]; then
+        extra_flags=(--options runtime --timestamp)
+    fi
+
+    echo "==> Signing dylibs and extension modules (deepest first)..."
+    # Sort by path length (longest = deepest) so inner libs are signed before outer ones.
+    # Use process substitution to keep the while loop in the current shell (required
+    # for set -euo pipefail to behave correctly — a pipe would run it in a subshell).
+    while IFS= read -r lib; do
+        codesign --force --sign "$identity" "${extra_flags[@]}" "$lib" 2>/dev/null || true
+    done < <(find "$APP_BUNDLE" \( -name "*.dylib" -o -name "*.so" \) \
+             | awk '{ print length, $0 }' | sort -rn | awk '{ $1=""; print substr($0,2) }')
+
+    # Sign any other executables nested under MacOS/ (e.g. helper tools)
+    while IFS= read -r bin; do
+        codesign --force --sign "$identity" "${extra_flags[@]}" "$bin" 2>/dev/null || true
+    done < <(find "$APP_BUNDLE/Contents/MacOS" -type f ! -name "MoskoMeter")
+
     echo "==> Signing app bundle..."
-    codesign --force --verify --sign "$identity" "$APP_BUNDLE"
+    codesign --force --verify --sign "$identity" "${extra_flags[@]}" "$APP_BUNDLE"
 }
 
 if [[ -n "$SIGN_IDENTITY" ]]; then
@@ -118,6 +129,7 @@ PKG_ARGS=(
     --install-location "$INSTALL_LOCATION"
     --identifier "$PKG_ID"
     --version "$VERSION"
+    --ownership recommended
 )
 
 if [[ -n "$SIGN_IDENTITY" ]]; then
